@@ -1,0 +1,16 @@
+MEGA plugin for Plowshare : installation notes
+
+$ make install
+
+Note: for non-root users, adding sudo might be necessary.
+
+You can define a custom installation prefix (default prefix is /usr/local):
+
+$ make install PREFIX=/usr
+
+If you are directly working on a cloned git repository you can do:
+
+$ PLOWDIR=/.../src make install
+
+
+# vim: set fileencoding utf-8
