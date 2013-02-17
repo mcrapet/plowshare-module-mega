@@ -23,7 +23,8 @@
 MODULE_MEGA_REGEXP_URL="https\?://\(www\.\)\?mega\.co\.nz/"
 
 MODULE_MEGA_UPLOAD_OPTIONS="
-AUTH,a,auth,a=EMAIL:PASSWORD,User account (mandatory)"
+AUTH,a,auth,a=EMAIL:PASSWORD,User account (mandatory)
+NOSSL,,nossl,,Use HTTP upload url instead of HTTPS"
 MODULE_MEGA_UPLOAD_REMOTE_SUPPORT=no
 
 # Globals
@@ -268,6 +269,7 @@ mega_api_req() {
 
     if [ ${#JSON} -le 3 ]; then
         mega_error "$JSON"
+        [ "$JSON" != '-3' ] || return $ERR_NETWORK
         return $ERR_FATAL
     fi
 
@@ -275,6 +277,7 @@ mega_api_req() {
     echo "$JSON"
 }
 
+# RootID
 mega_get_rootid() {
     local JSON
     # First struture is Root ("Cloud Drive"). t=2
@@ -407,7 +410,13 @@ mega_upload() {
     MEGA_SESSION_ID=$(mega_login "$AUTH") || return
     log_debug "session ID: '$MEGA_SESSION_ID'"
 
-    JSON=$(mega_api_req '{"a":"u","s":"'$SZ'"}') || return
+    # TODO: see extra paramters: "ms":0, "r":0, "e":0
+    if [ -z "$NOSSL" ]; then
+        JSON=$(mega_api_req '{"a":"u","ssl":1,"s":"'$SZ'"}') || return
+    else
+        JSON=$(mega_api_req '{"a":"u","s":"'$SZ'"}') || return
+    fi
+
     UP_URL=$(echo "$JSON" | parse_json p) || return
     log_debug "upload URL: '$UP_URL'"
 
@@ -489,12 +498,33 @@ $(hex_to_base64 "$FILE_ATTR")\",\"k\":\"$(hex_to_base64 "$ENC_KEY")\"}]"
     JSON=$(mega_api_req '{"a":"p","t":"'"$ROOT_ID"'","n":'"$FILE_DATA"'}')
 
     FILE_ID=$(parse_json h <<< "$JSON")
-    log_debug "file id: $FILE_ID"
+    log_debug "file id: '$FILE_ID'"
 
     # Create public handle
-    FILE_ID=$(mega_api_req '{"a":"l","n":"'"$FILE_ID"'"}')
+    FILE_ID=$(mega_api_req '{"a":"l","n":"'"$FILE_ID"'"}') || { \
+        log_error "FIXME: should retry";
+    }
+
     FILE_ID=${FILE_ID#\"}
     FILE_ID=${FILE_ID%\"}
+
+
+    #JSON=$(curl -X POST \
+    #    -H 'Content-Type:application/xml' \
+    #    -H 'Origin: Plowshare' \
+    #    --data-binary "sc?sn=${MEGA_SEQ_NO:0:8}" \
+    #    "https://eu.api.mega.co.nz/sc?sid=$MEGA_SESSION_ID&sn=${MEGA_SEQ_NO:0:8}")
+    #NEW_SN=$(echo "$JSON" | parse_json sn) || return
+    #log_debug "sn: '$NEW_SN'"
+    #
+    #JSON=$(curl -X POST \
+    #    -H 'Content-Type:application/xml' \
+    #    -H 'Origin: Plowshare' \
+    #    --data-binary "sc?sn=$NEW_SN" \
+    #    "https://eu.api.mega.co.nz/sc?sid=$MEGA_SESSION_ID&sn=$NEW_SN")
+    #WAIT_URL=$(echo "$JSON" | parse_json w) || return
+    #log_debug "wait URL: $WAIT_URL"
+
 
     echo 'http://mega.co.nz/#!'"$FILE_ID"'!'"$(hex_to_base64 $NODE_KEY)"
 }
