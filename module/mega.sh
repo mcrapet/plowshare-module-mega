@@ -22,6 +22,11 @@
 
 MODULE_MEGA_REGEXP_URL="https\?://\(www\.\)\?mega\.co\.nz/"
 
+MODULE_MEGA_DOWNLOAD_OPTIONS=""
+MODULE_MEGA_DOWNLOAD_RESUME=no
+MODULE_MEGA_DOWNLOAD_FINAL_LINK_NEEDS_COOKIE=no
+MODULE_MEGA_DOWNLOAD_SUCCESSIVE_INTERVAL=
+
 MODULE_MEGA_UPLOAD_OPTIONS="
 AUTH,a,auth,a=EMAIL:PASSWORD,User account (mandatory)
 NOSSL,,nossl,,Use HTTP upload url instead of HTTPS"
@@ -178,6 +183,12 @@ aes_cbc_encrypt() {
     $MEGA_CRYPTO cbc_enc "$1" "$2"
 }
 
+# $1: 128-bit key (hexstring)
+# $2: ciphered 16 bytes block(s) (hexstring)
+aes_cbc_decrypt() {
+    $MEGA_CRYPTO cbc_dec "$1" "$2"
+}
+
 # $1: input file (plaintext data)
 # $2: output file (ciphered data)
 # $3: iv (hexstring).
@@ -212,6 +223,25 @@ mega_enc_attr() {
     fi
 
     aes_cbc_encrypt "$2" "$ATTR"
+}
+
+# $1: ciphered attribute(s) (hexstring format)
+# $2: AES key (4*8 hexdigits = 128-bit)
+# stdout: hexstring (length is multiple of 32)
+mega_dec_attr() {
+    local ENC_ATTR=$1
+    local KEY=$2
+    local B C
+
+    B=$(aes_cbc_decrypt "$KEY" "$ENC_ATTR" | sed -e 's/../\\x&/g')
+    C=$(echo -ne "$B")
+
+    if [ "${C:0:5}" != 'MEGA{' ]; then
+        log_error "$FUNCNAME: error decoding"
+        return $ERR_FATAL
+    fi
+
+    echo "${C:4}"
 }
 
 # Static function. Translate error status
@@ -382,6 +412,100 @@ mega_login() {
     hex_to_base64 "${CSID_N:0:86}"
 }
 
+# Output an mega.co.nz file download URL
+# $1: cookie file (unused here)
+# $2: mega url
+# stdout: real file download link ? (ciphered file..)
+mega_download() {
+    local -r URL=$2
+
+    local FILE_ID FILE_KEY KEY C OFFSET LENGTH TMP_FILE
+    local AES_IV4 AES_IV5 META_MAC AESKEY JSON
+    local FILE_URL FILE_SIZE ENC_ATTR FILE_ATTR FILE_NAME
+    local FILE_MAC CHUNK_MAC CHECK_MAC_HI CHECK_MAC_LO
+
+    IFS="!" read -r _ FILE_ID FILE_KEY <<< "$URL"
+
+    if [ -z "$FILE_ID" ]; then
+        log_error "file id is missing, bad link"
+        return $ERR_FATAL
+    fi
+
+    if [ -z "$FILE_KEY" ]; then
+        log_error "file key is missing, bad link"
+        return $ERR_FATAL
+    fi
+
+    KEY=$(base64_to_hex "$FILE_KEY")
+    AES_IV4=${KEY:32:8}
+    AES_IV5=${KEY:40:8}
+
+    # 64-bit meta-MAC
+    META_MAC=${KEY:48:16}
+
+    AESKEY=$(hex_xor "${KEY:0:32}" "${KEY:32:32}")
+
+    JSON=$(mega_api_req '{"a":"g","g":1,"p":"'"$FILE_ID"'"}') || return
+
+    FILE_URL=$(echo "$JSON" | parse_json g) || return
+    FILE_SIZE=$(echo "$JSON" | parse_json s) || return
+    ENC_ATTR=$(echo "$JSON" | parse_json at) || return
+    ENC_ATTR=$(base64_to_hex "$ENC_ATTR")
+    FILE_ATTR=$(mega_dec_attr "$ENC_ATTR" "$AESKEY") || return
+    FILE_NAME=$(echo "$FILE_ATTR" | parse_json n) || return
+
+    local TMP_FILE1 TMP_FILE2
+    TMP_FILE=$(create_tempfile '.mega') || return
+
+    # Note: We should not use curl_with_log, this the *final* url but
+    # we need to decrypt file content.
+    curl_with_log -o "$TMP_FILE" "$FILE_URL" || return
+
+    # Decrypt "$TMP_FILE1" with AES-CTR (with $AESKEY)
+    COUNTER="${AES_IV4}${AES_IV5}0000000000000000"
+    COUNTER=$(aes_ctr_encrypt "$TMP_FILE" "${TMP_FILE}.dec" "$COUNTER" "$AESKEY")
+
+    local -a CHUNKS=($(get_chunks $FILE_SIZE))
+    log_debug "number of chunks: ${#CHUNKS[@]}"
+
+    for C in ${CHUNKS[@]}; do
+        IFS=':' read -r OFFSET LENGTH <<<"$C"
+
+        log_debug "offset: $OFFSET, length: $LENGTH"
+        dd if="${TMP_FILE}.dec" bs=1 skip=$OFFSET count=$LENGTH of="$TMP_FILE" 2>/dev/null
+
+        # CBC-MAC of this chunk
+        CHUNK_MAC=$(aes_cbc_mac "$TMP_FILE" "$AES_IV4$AES_IV5$AES_IV4$AES_IV5" "$AESKEY")
+        FILE_MAC="$FILE_MAC$CHUNK_MAC"
+    done
+
+    # FIXME. Copy in current directory.. not good :(
+    cp "${TMP_FILE}.dec" "$FILE_NAME"
+    rm -f "$TMP_FILE" "${TMP_FILE}.dec"
+
+    # CBC-MAC to get File MAC
+    C=$(sed -e 's/../\\x&/g' <<<"$FILE_MAC")
+    echo -ne "$C" >"$TMP_FILE"
+    FILE_MAC=$(aes_cbc_mac "$TMP_FILE" 0 "$AESKEY")
+    log_debug "file-MAC: $FILE_MAC"
+
+    CHECK_MAC_HI=$(hex_xor "${FILE_MAC:0:8}" "${FILE_MAC:8:8}")
+    CHECK_MAC_LO=$(hex_xor "${FILE_MAC:16:8}" "${FILE_MAC:24:8}")
+
+    log_debug "meta-MAC: $CHECK_MAC_HI$CHECK_MAC_LO"
+    if [ "$META_MAC" = "$CHECK_MAC_HI$CHECK_MAC_LO" ]; then
+        log_debug "meta mac correct"
+
+        # No final url
+        echo
+        echo "$FILE_NAME"
+        return 0
+    fi
+
+    log_debug "meta-MAC mismatch! $META_MAC expected"
+    return $ERR_FATAL
+}
+
 # Upload a file to mega.co.nz
 # $1: cookie file (unused here)
 # $2: input file (with full path)
@@ -392,7 +516,7 @@ mega_upload() {
     local -r DESTFILE=$3
 
     local SZ TMP_FILE JSON UP_URL C OFFSET LENGTH
-    local AESKEY AES_IV4 AES_IV5 TOKEN FILE_MAC
+    local AESKEY AES_IV4 AES_IV5 TOKEN FILE_MAC CHUNK_MAC
     local META_MAC_HI META_MAC_LO KEY_1 KEY_2 KEY_3 KEY_4 NODE_KEY
     local FILE_ATTR ENC_KEY FILE_DATA FILE_ID
 
