@@ -30,7 +30,7 @@ install: check_plowdir compile
 	$(INSTALL) -m 755 $(OUT) $(PLOWDIR)/plugins/mega
 	@grep -q '^mega[[:space:]]' $(PLOWDIR)/modules/config || { \
 	        echo "patching modules/config file" && \
-	        echo "mega            |          | upload |        |      |       |" >> $(PLOWDIR)/modules/config; }
+	        echo "mega            | download | upload |        |      |       |" >> $(PLOWDIR)/modules/config; }
 
 uninstall: check_plowdir
 	$(RM) $(PLOWDIR)/plugins/mega

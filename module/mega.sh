@@ -29,14 +29,13 @@ MODULE_MEGA_DOWNLOAD_SUCCESSIVE_INTERVAL=
 
 MODULE_MEGA_UPLOAD_OPTIONS="
 AUTH,a,auth,a=EMAIL:PASSWORD,User account (mandatory)
-NOSSL,,nossl,,Use HTTP upload url instead of HTTPS"
+NOSSL,,nossl,,Use HTTP upload url instead of HTTPS
+PRIVATE_FILE,,private,,Do not allow others to download the file"
 MODULE_MEGA_UPLOAD_REMOTE_SUPPORT=no
 
 # Globals
 declare -r MEGA_CRYPTO="$LIBDIR/plugins/mega"
 declare -i MEGA_SEQ_NO=$(random d 9)
-declare MEGA_SESSION_ID
-declare MEGA_MASTER_KEY
 
 # $1: hex buffer
 # stdout: base64 buffer (MEGA variant)
@@ -303,7 +302,6 @@ mega_api_req() {
         return $ERR_FATAL
     fi
 
-    (( ++MEGA_SEQ_NO ))
     echo "$JSON"
 }
 
@@ -312,6 +310,7 @@ mega_get_rootid() {
     local JSON
     # First struture is Root ("Cloud Drive"). t=2
     JSON=$(mega_api_req '{"a":"f","c":"1"}') || return
+    (( ++MEGA_SEQ_NO ))
     echo "$JSON" | parse_json 'h' 'split' | first_line
 }
 
@@ -364,7 +363,7 @@ mega_stringhash() {
 mega_login() {
     local -r AUTH=$1
     local EMAIL PASSWORD AESKEY HASH LOGIN_DATA JSON K PRIVK CSID
-    local ENC_MASTER_KEY ENC_RSA_PRIV_KEY RSA_PRIV_KEY
+    local ENC_MASTER_KEY MASTER_KEY ENC_RSA_PRIV_KEY RSA_PRIV_KEY
     local RSA_P RSA_Q RSA_D RSA_QINV ENC_CSID_N CSID_N
 
     split_auth "$AUTH" EMAIL PASSWORD || return
@@ -377,6 +376,7 @@ mega_login() {
     LOGIN_DATA='{"a":"us","user":"'"$EMAIL"'","uh":"'"$HASH"'"}'
 
     JSON=$(mega_api_req "$LOGIN_DATA") || return $ERR_LOGIN_FAILED
+    (( ++MEGA_SEQ_NO ))
 
     # k: master key (encrypted with $AESKEY)
     # privk: RSA private key (encrypted with master key)
@@ -386,9 +386,9 @@ mega_login() {
     CSID=$(echo "$JSON" | parse_json csid) || return
 
     ENC_MASTER_KEY=$(base64_to_hex "$K")
-    MEGA_MASTER_KEY=$(mega_decrypt_key "$AESKEY" "$ENC_MASTER_KEY")
+    MASTER_KEY=$(mega_decrypt_key "$AESKEY" "$ENC_MASTER_KEY")
     ENC_RSA_PRIV_KEY=$(base64_to_hex "$PRIVK")
-    RSA_PRIV_KEY=$(mega_decrypt_key "$MEGA_MASTER_KEY" "$ENC_RSA_PRIV_KEY")
+    RSA_PRIV_KEY=$(mega_decrypt_key "$MASTER_KEY" "$ENC_RSA_PRIV_KEY")
 
     # This RSA Private key contains 4 Multi-precision integers (MPI)
     # p: The first factor of n (prime1)
@@ -410,6 +410,7 @@ mega_login() {
 
     # Session ID length is 43 bytes
     hex_to_base64 "${CSID_N:0:86}"
+    echo "$MASTER_KEY"
 }
 
 # Output an mega.co.nz file download URL
@@ -446,6 +447,7 @@ mega_download() {
     AESKEY=$(hex_xor "${KEY:0:32}" "${KEY:32:32}")
 
     JSON=$(mega_api_req '{"a":"g","g":1,"p":"'"$FILE_ID"'"}') || return
+    (( ++MEGA_SEQ_NO ))
 
     FILE_URL=$(echo "$JSON" | parse_json g) || return
     FILE_SIZE=$(echo "$JSON" | parse_json s) || return
@@ -454,14 +456,13 @@ mega_download() {
     FILE_ATTR=$(mega_dec_attr "$ENC_ATTR" "$AESKEY") || return
     FILE_NAME=$(echo "$FILE_ATTR" | parse_json n) || return
 
-    local TMP_FILE1 TMP_FILE2
     TMP_FILE=$(create_tempfile '.mega') || return
 
     # Note: We should not use curl_with_log, this the *final* url but
     # we need to decrypt file content.
     curl_with_log -o "$TMP_FILE" "$FILE_URL" || return
 
-    # Decrypt "$TMP_FILE1" with AES-CTR (with $AESKEY)
+    # Decrypt "$TMP_FILE" with AES-CTR (with $AESKEY)
     COUNTER="${AES_IV4}${AES_IV5}0000000000000000"
     COUNTER=$(aes_ctr_encrypt "$TMP_FILE" "${TMP_FILE}.dec" "$COUNTER" "$AESKEY")
 
@@ -479,14 +480,12 @@ mega_download() {
         FILE_MAC="$FILE_MAC$CHUNK_MAC"
     done
 
-    # FIXME. Copy in current directory.. not good :(
-    cp "${TMP_FILE}.dec" "$FILE_NAME"
-    rm -f "$TMP_FILE" "${TMP_FILE}.dec"
+    rm -f "$TMP_FILE"
 
     # CBC-MAC to get File MAC
     C=$(sed -e 's/../\\x&/g' <<<"$FILE_MAC")
     echo -ne "$C" >"$TMP_FILE"
-    FILE_MAC=$(aes_cbc_mac "$TMP_FILE" 0 "$AESKEY")
+    FILE_MAC=$(aes_cbc_mac "$TMP_FILE" '00000000000000000000000000000000' "$AESKEY")
     log_debug "file-MAC: $FILE_MAC"
 
     CHECK_MAC_HI=$(hex_xor "${FILE_MAC:0:8}" "${FILE_MAC:8:8}")
@@ -496,8 +495,7 @@ mega_download() {
     if [ "$META_MAC" = "$CHECK_MAC_HI$CHECK_MAC_LO" ]; then
         log_debug "meta mac correct"
 
-        # No final url
-        echo
+        echo "file://${TMP_FILE}.dec"
         echo "$FILE_NAME"
         return 0
     fi
@@ -519,6 +517,7 @@ mega_upload() {
     local AESKEY AES_IV4 AES_IV5 TOKEN FILE_MAC CHUNK_MAC
     local META_MAC_HI META_MAC_LO KEY_1 KEY_2 KEY_3 KEY_4 NODE_KEY
     local FILE_ATTR ENC_KEY FILE_DATA FILE_ID
+    local MEGA_SESSION_ID MEGA_MASTER_KEY
 
     test "$AUTH" || return $ERR_LINK_NEED_PERMISSIONS
 
@@ -531,15 +530,18 @@ mega_upload() {
 
     SZ=$(get_filesize "$FILE") || return
 
-    MEGA_SESSION_ID=$(mega_login "$AUTH") || return
+    C=$(mega_login "$AUTH") || return
+    { read MEGA_SESSION_ID; read MEGA_MASTER_KEY; } <<< "$C"
+
     log_debug "session ID: '$MEGA_SESSION_ID'"
 
     # TODO: see extra paramters: "ms":0, "r":0, "e":0
     if [ -z "$NOSSL" ]; then
-        JSON=$(mega_api_req '{"a":"u","ssl":1,"s":"'$SZ'"}') || return
+        JSON=$(mega_api_req '{"a":"u","ssl":1,"s":'$SZ'}') || return
     else
-        JSON=$(mega_api_req '{"a":"u","s":"'$SZ'"}') || return
+        JSON=$(mega_api_req '{"a":"u","s":'$SZ'}') || return
     fi
+    (( ++MEGA_SEQ_NO ))
 
     UP_URL=$(echo "$JSON" | parse_json p) || return
     log_debug "upload URL: '$UP_URL'"
@@ -572,15 +574,16 @@ mega_upload() {
         COUNTER=$(aes_ctr_encrypt "$TMP_FILE" "${TMP_FILE}.enc" "$COUNTER" "$AESKEY")
 
         TOKEN=$(curl_with_log -X POST --data-binary "@${TMP_FILE}.enc" \
-            -H 'Content-Type: application/octet-stream' \
             -H 'Origin: Plowshare' "$UP_URL/$OFFSET") || return
-        log_debug "upload token: '$TOKEN'"
 
         # Empty result is not an error.
-        if [ -n "$TOKEN" -a "${#TOKEN}" -le 3 ]; then
-            log_error "Upload chunck error! offset=$OFFSET"
-            mega_error "$TOKEN"
-            return $ERR_FATAL
+        if [ -n "$TOKEN" ]; then
+            log_debug "upload token: '$TOKEN'"
+            if [ "${#TOKEN}" -le 3 ]; then
+                log_error "Upload chunck error! offset=$OFFSET"
+                mega_error "$TOKEN"
+                return $ERR_FATAL
+            fi
         fi
     done
 
@@ -620,35 +623,22 @@ $(hex_to_base64 "$FILE_ATTR")\",\"k\":\"$(hex_to_base64 "$ENC_KEY")\"}]"
     # t : id of target parent node (directory)
     ROOT_ID=$(mega_get_rootid) || return
     JSON=$(mega_api_req '{"a":"p","t":"'"$ROOT_ID"'","n":'"$FILE_DATA"'}')
+    (( ++MEGA_SEQ_NO ))
 
     FILE_ID=$(parse_json h <<< "$JSON")
-    log_debug "file id: '$FILE_ID'"
+    log_debug "file id (private): '$FILE_ID'"
 
-    # Create public handle
-    FILE_ID=$(mega_api_req '{"a":"l","n":"'"$FILE_ID"'"}') || { \
-        log_error "FIXME: should retry";
-    }
+    if [ -z "$PRIVATE_FILE" ]; then
+        # Create public handle
+        FILE_ID=$(mega_api_req '{"a":"l","n":"'"$FILE_ID"'"}') || { \
+            log_error "FIXME: should retry";
+        }
+        (( ++MEGA_SEQ_NO ))
 
-    FILE_ID=${FILE_ID#\"}
-    FILE_ID=${FILE_ID%\"}
-
-
-    #JSON=$(curl -X POST \
-    #    -H 'Content-Type:application/xml' \
-    #    -H 'Origin: Plowshare' \
-    #    --data-binary "sc?sn=${MEGA_SEQ_NO:0:8}" \
-    #    "https://eu.api.mega.co.nz/sc?sid=$MEGA_SESSION_ID&sn=${MEGA_SEQ_NO:0:8}")
-    #NEW_SN=$(echo "$JSON" | parse_json sn) || return
-    #log_debug "sn: '$NEW_SN'"
-    #
-    #JSON=$(curl -X POST \
-    #    -H 'Content-Type:application/xml' \
-    #    -H 'Origin: Plowshare' \
-    #    --data-binary "sc?sn=$NEW_SN" \
-    #    "https://eu.api.mega.co.nz/sc?sid=$MEGA_SESSION_ID&sn=$NEW_SN")
-    #WAIT_URL=$(echo "$JSON" | parse_json w) || return
-    #log_debug "wait URL: $WAIT_URL"
-
+        FILE_ID=${FILE_ID#\"}
+        FILE_ID=${FILE_ID%\"}
+        log_debug "file id (public): '$FILE_ID'"
+    fi
 
     echo 'http://mega.co.nz/#!'"$FILE_ID"'!'"$(hex_to_base64 $NODE_KEY)"
 }
