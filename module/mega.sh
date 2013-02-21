@@ -311,7 +311,7 @@ mega_get_rootid() {
     # First struture is Root ("Cloud Drive"). t=2
     JSON=$(mega_api_req '{"a":"f","c":"1"}') || return
     (( ++MEGA_SEQ_NO ))
-    echo "$JSON" | parse_json 'h' 'split' | first_line
+    echo "${JSON%%\"t\":2*}" | parse_json 'h'
 }
 
 # Static function
