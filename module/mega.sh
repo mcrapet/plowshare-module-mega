@@ -41,7 +41,7 @@ declare -i MEGA_SEQ_NO=$(random d 9)
 # stdout: base64 buffer (MEGA variant)
 hex_to_base64() {
     local IN=$(sed -e 's/../\\x&/g' <<<"$1")
-    base64 < <(echo -ne "$IN") | sed -e 'y=+/=-_=; s/=*$//'
+    base64 -w 0 < <(echo -ne "$IN") | sed -e 'y=+/=-_=; s/=*$//'
 }
 
 # $1: base64 buffer (MEGA variant)
@@ -290,7 +290,7 @@ mega_api_req() {
         API_URL="$API_URL/cs?id=$MEGA_SEQ_NO&sid=$MEGA_SESSION_ID"
     fi
 
-    JSON=$(curl -X POST --data-binary "[$DATA]" \
+    JSON=$(curl -X POST --retry 2 --data-binary "[$DATA]" \
         -H 'Content-Type: text/plain; charset=UTF-8' \
         -H 'Origin: Plowshare' "$API_URL") || return
     JSON=${JSON#[}
@@ -604,12 +604,15 @@ mega_upload() {
     TOKEN=""
 
     local -a CHUNKS=($(get_chunks $SZ))
-    log_debug "number of chunks: ${#CHUNKS[@]}"
+    local N I
+
+    N=${#CHUNKS[@]}
+    I=1
 
     for C in ${CHUNKS[@]}; do
         IFS=':' read -r OFFSET LENGTH <<<"$C"
 
-        log_debug "offset: $OFFSET, length: $LENGTH"
+        log_error "chunk $I/$N: offset: $OFFSET, length: $LENGTH"
         dd if="$2" bs=1 skip=$OFFSET count=$LENGTH of="$TMP_FILE" 2>/dev/null
 
         # CBC-MAC of this chunk
@@ -619,7 +622,7 @@ mega_upload() {
         # AES-CTR mode does not require plaintext padding
         COUNTER=$(aes_ctr_encrypt "$TMP_FILE" "${TMP_FILE}.enc" "$COUNTER" "$AESKEY")
 
-        TOKEN=$(curl_with_log -X POST --data-binary "@${TMP_FILE}.enc" \
+        TOKEN=$(curl -X POST --retry 3 --retry-delay 10 --data-binary "@${TMP_FILE}.enc" \
             -H 'Origin: Plowshare' "$UP_URL/$OFFSET") || return
 
         # Empty result is not an error.
@@ -631,6 +634,8 @@ mega_upload() {
                 return $ERR_FATAL
             fi
         fi
+
+        (( ++I ))
     done
 
     # CBC-MAC to get File MAC
@@ -676,9 +681,7 @@ $(hex_to_base64 "$FILE_ATTR")\",\"k\":\"$(hex_to_base64 "$ENC_KEY")\"}]"
 
     if [ -z "$PRIVATE_FILE" ]; then
         # Create public handle
-        FILE_ID=$(mega_api_req '{"a":"l","n":"'"$FILE_ID"'"}') || { \
-            log_error "FIXME: should retry";
-        }
+        FILE_ID=$(mega_api_req '{"a":"l","n":"'"$FILE_ID"'"}') || return
         (( ++MEGA_SEQ_NO ))
 
         FILE_ID=${FILE_ID#\"}
