@@ -408,6 +408,7 @@ mega_login() {
 
     # Session ID length is 43 bytes
     hex_to_base64 "${CSID_N:0:86}"
+    echo
     echo "$MASTER_KEY"
 }
 
@@ -622,8 +623,14 @@ mega_upload() {
         # AES-CTR mode does not require plaintext padding
         COUNTER=$(aes_ctr_encrypt "$TMP_FILE" "${TMP_FILE}.enc" "$COUNTER" "$AESKEY")
 
-        TOKEN=$(curl -X POST --retry 3 --retry-delay 10 --data-binary "@${TMP_FILE}.enc" \
-            -H 'Origin: Plowshare' "$UP_URL/$OFFSET") || return
+        # 2 tries
+        TOKEN=$(curl -X POST --data-binary "@${TMP_FILE}.enc" \
+               -H 'Origin: Plowshare' "$UP_URL/$OFFSET") || {
+           wait 5 || return
+           log_error "chunk $I/$N: retry";
+           TOKEN=$(curl -X POST --data-binary "@${TMP_FILE}.enc" \
+           -H 'Origin: Plowshare' "$UP_URL/$OFFSET") || return
+        }
 
         # Empty result is not an error.
         if [ -n "$TOKEN" ]; then
