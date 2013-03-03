@@ -1,5 +1,6 @@
 ##
 # mega.co.nz plugin for Plowshare
+# This Makefile follow GNU conventions and support the $(DESTDIR) variable.
 ##
 
 # TODO:
@@ -7,7 +8,7 @@
 # - check for openssl libs (libcrypto.so)
 
 # Paths you can override
-PREFIX   = /usr/local
+PREFIX   = /usr
 PLOWDIR ?= $(PREFIX)/share/plowshare4
 
 # Compiler and tools
@@ -25,19 +26,23 @@ compile: $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(OUT) -lcrypto
 
 install: check_plowdir compile
-	$(INSTALL) -d $(PLOWDIR)/plugins
-	$(INSTALL) -m 644 module/mega.sh $(PLOWDIR)/modules/mega.sh
-	$(INSTALL) -m 755 $(OUT) $(PLOWDIR)/plugins/mega
+	$(INSTALL) -d $(DESTDIR)$(PLOWDIR)/plugins
+	$(INSTALL) -m 755 $(OUT) $(DESTDIR)$(PLOWDIR)/plugins/mega
+	$(INSTALL) -D -m 644 module/mega.sh $(DESTDIR)$(PLOWDIR)/modules/mega.sh
+ifeq ($(DESTDIR),)
 	@grep -q '^mega[[:space:]]' $(PLOWDIR)/modules/config || { \
-	        echo "patching modules/config file" && \
-	        echo "mega            | download | upload |        |      |       |" >> $(PLOWDIR)/modules/config; }
+	        echo 'patching modules/config file' && \
+	        echo 'mega            | download | upload |        |      |       |' >> $(PLOWDIR)/modules/config; }
+endif
 
 uninstall: check_plowdir
 	$(RM) $(PLOWDIR)/plugins/mega
 	$(RM) $(PLOWDIR)/modules/mega.sh
+ifeq ($(DESTDIR),)
 	@(grep -q '^mega[[:space:]]' $(PLOWDIR)/modules/config && \
-	        echo "unpatching modules/config file" && \
+	        echo 'unpatching modules/config file' && \
 	        sed -ie '/^mega[[:space:]]/d' $(PLOWDIR)/modules/config ) || true
+endif
 
 # Note: sed -i is not BSD friendly!
 
@@ -45,6 +50,8 @@ clean:
 	@$(RM) $(OUT)
 
 check_plowdir:
-	@test -f $(PLOWDIR)/core.sh || { echo "Invalid PLOWDIR, this is not a plowshare directory! Can't find core.sh. Abort."; false; }
+ifeq ($(DESTDIR),)
+	@test -f $(PLOWDIR)/core.sh || { echo 'Invalid PLOWDIR, this is not a plowshare directory! Can'\''t find core.sh. Abort.'; false; }
+endif
 
 .PHONY: install uninstall check_plowdir clean
