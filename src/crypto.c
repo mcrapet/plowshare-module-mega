@@ -163,8 +163,8 @@ static int aes_128_ctr (const unsigned char key[AES_KEYSIZE_128],
     const unsigned long length, unsigned char *out, int enc)
 {
   AES_KEY akey;
-	unsigned int num = 0;
-	unsigned char tmp[AES_BLOCK_SIZE]; /* should be zeroed if num is non zero */
+  unsigned int num = 0;
+  unsigned char tmp[AES_BLOCK_SIZE]; /* should be zeroed if num is non zero */
 
   if (!enc) {
     fprintf(stderr, "error: aes_128-ctr decrypt not implemented\n");
@@ -336,7 +336,6 @@ int main (int argc, char *argv[])
         fprintf(stderr, "error: missing argument, abort\n");
         ret = ERR_BAD_COMMAND_LINE;
       } else {
-
         len = AES_KEYSIZE_128;
         ret = normalize_buffer(argv[2], &key[0], &len);
         if (ret == 0) {
@@ -373,7 +372,6 @@ int main (int argc, char *argv[])
         fprintf(stderr, "error: missing argument, abort\n");
         ret = ERR_BAD_COMMAND_LINE;
       } else {
-
         len = AES_KEYSIZE_128;
         ret = normalize_buffer(argv[2], &key[0], &len);
         if (ret == 0) {
@@ -392,7 +390,6 @@ int main (int argc, char *argv[])
         fprintf(stderr, "error: missing argument, abort\n");
         ret = ERR_BAD_COMMAND_LINE;
       } else {
-
         len = AES_KEYSIZE_128;
         ret = normalize_buffer(argv[2], &key[0], &len);
         if (ret == 0) {
@@ -416,7 +413,6 @@ int main (int argc, char *argv[])
           fprintf(stderr, "error: bad argument size, abort\n");
           ret = ERR_BAD_COMMAND_LINE;
         } else {
-
           len = AES_KEYSIZE_128;
           ret = normalize_buffer(argv[3], &key[0], &len);
           if (ret == 0) {
@@ -441,7 +437,6 @@ int main (int argc, char *argv[])
           fprintf(stderr, "error: can't open file, abort\n");
           ret = ERR_BAD_COMMAND_LINE;
         } else {
-
           len = AES_KEYSIZE_128;
           ret = normalize_buffer(argv[3], &key[0], &len);
           if (ret == 0) {
