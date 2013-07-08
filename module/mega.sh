@@ -516,8 +516,15 @@ mega_download() {
     for C in ${CHUNKS[@]}; do
         IFS=':' read -r OFFSET LENGTH <<<"$C"
 
-        log_debug "offset: $OFFSET, length: $LENGTH"
-        dd if="${TMP_FILE}.dec" bs=1 skip=$OFFSET count=$LENGTH of="$TMP_FILE" 2>/dev/null
+        if (( LENGTH % 131072 == 0 )); then
+            log_debug "offset: $OFFSET, length: $LENGTH"
+            (( LENGTH /= 131072 ))
+            (( OFFSET /= 131072 ))
+            dd if="${TMP_FILE}.dec" bs=131072 skip=$OFFSET count=$LENGTH of="$TMP_FILE" 2>/dev/null
+        else
+            log_debug "offset: $OFFSET, length: $LENGTH (last)"
+            dd if="${TMP_FILE}.dec" bs=1 skip=$OFFSET count=$LENGTH of="$TMP_FILE" 2>/dev/null
+        fi
 
         # CBC-MAC of this chunk
         CHUNK_MAC=$(aes_cbc_mac "$TMP_FILE" "$AES_IV4$AES_IV5$AES_IV4$AES_IV5" "$AESKEY")
