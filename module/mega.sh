@@ -29,6 +29,7 @@ MODULE_MEGA_DOWNLOAD_SUCCESSIVE_INTERVAL=
 
 MODULE_MEGA_UPLOAD_OPTIONS="
 AUTH,a,auth,a=EMAIL:PASSWORD,User account
+FOLDER,,folder,s=FOLDER,Folder to upload files into (account only)
 NOSSL,,nossl,,Use HTTP upload url instead of HTTPS
 PRIVATE_FILE,,private,,Do not allow others to download the file (account only)"
 MODULE_MEGA_UPLOAD_REMOTE_SUPPORT=no
@@ -324,6 +325,48 @@ mega_get_rootid() {
     echo "${JSON%%\"t\":2*}" | parse_json 'h'
 }
 
+# Static function. Find FolderId
+# $1: 128-bit key (hexstring format)
+# $2: (leaf) folder name. No hierarchy ('/' character is valid for a folder name)
+mega_get_folderid() {
+    local JSON LINE ENC_ATTR ATTR ENC_KEY KEY FOLDER_NAME
+    local -r AESKEY=$1
+    local -r NAME=$2
+
+    JSON=$(mega_api_req '{"a":"f","c":"1"}' | \
+        sed -e 's/}[[:space:]]*[],]/}\n/g' | \
+        sed -ne '/"t"[[:space:]]*:[[:space:]]*1/p') || return
+
+    # Grep all directories (one per line). t=1
+    # {"h":"FsU3gQCA","p":"YsVBWSzJ","u":"lPymiGWTSiA","t":1,"a":"gd-f0USMKuaPUwcSoqtRXg","k":"lPymiGWTSiA:70ey9v0w0M1cI-Kt1wR98A","ts":1374527356}
+    for LINE in $JSON; do
+        ENC_ATTR=$(parse_json a <<< "$LINE") || return
+        ENC_KEY=$(parse_json k <<< "$LINE") || return
+
+        ENC_KEY=${ENC_KEY#*:}
+        ENC_KEY=${ENC_KEY%/*}
+        ENC_KEY=$(base64_to_hex "$ENC_KEY")
+        KEY=$(mega_decrypt_key "$AESKEY" "$ENC_KEY")
+
+        ENC_ATTR=$(base64_to_hex "$ENC_ATTR")
+        ATTR=$(mega_dec_attr "$ENC_ATTR" "$KEY") || return
+        FOLDER_NAME=$(echo "$ATTR" | parse_json n) || return
+
+        if [ "$FOLDER_NAME" = "$NAME" ]; then
+            local H
+            H=$(parse_json h <<< "$LINE") || return
+            log_debug "found '$NAME', h:'$H'"
+            echo "$H"
+            return 0
+        fi
+
+        #log_debug "available folder: '$FOLDER_NAME'"
+    done
+
+    log_error "No folder named '$NAME' has been found. Aborting."
+    return $ERR_BAD_COMMAND_LINE
+}
+
 # Static function.
 # $1: password string
 mega_prepare_key() {
@@ -573,7 +616,7 @@ mega_upload() {
     local -r FILE=$2
     local -r DESTFILE=$3
 
-    local SZ TMP_FILE JSON UP_URL C OFFSET LENGTH
+    local SZ TMP_FILE JSON UP_URL C OFFSET LENGTH FOLDER_ID
     local AESKEY AES_IV4 AES_IV5 TOKEN FILE_MAC CHUNK_MAC
     local META_MAC_HI META_MAC_LO KEY_1 KEY_2 KEY_3 KEY_4 NODE_KEY
     local FILE_ATTR ENC_KEY FILE_DATA FILE_ID
@@ -586,7 +629,10 @@ mega_upload() {
 
     if [ -n "$AUTH" ]; then
         C=$(mega_login "$AUTH") || return
+
     else
+        test "$FOLDER" && \
+            log_error 'Folder setting is for user account only! Ignoring.'
         test "$PRIVATE_FILE" && \
             log_error 'Private file option has no sense here'
         C=$(mega_anon_login) || return
@@ -595,6 +641,13 @@ mega_upload() {
     (( ++MEGA_SEQ_NO ))
 
     log_debug "session ID: '$MEGA_SESSION_ID'"
+
+    if [ -n "$AUTH" -a -n "$FOLDER" ]; then
+        FOLDER_ID=$(mega_get_folderid "$MEGA_MASTER_KEY" "$FOLDER") || return
+    else
+        FOLDER_ID=$(mega_get_rootid) || return
+    fi
+    (( ++MEGA_SEQ_NO ))
 
     SZ=$(get_filesize "$FILE") || return
 
@@ -700,9 +753,7 @@ $(hex_to_base64 "$FILE_ATTR")\",\"k\":\"$(hex_to_base64 "$ENC_KEY")\"}]"
 
     # Add new node
     # t : id of target parent node (directory)
-    ROOT_ID=$(mega_get_rootid) || return
-    (( ++MEGA_SEQ_NO ))
-    JSON=$(mega_api_req '{"a":"p","t":"'"$ROOT_ID"'","n":'"$FILE_DATA"'}')
+    JSON=$(mega_api_req '{"a":"p","t":"'"$FOLDER_ID"'","n":'"$FILE_DATA"'}')
     (( ++MEGA_SEQ_NO ))
 
     FILE_ID=$(parse_json h <<< "$JSON")
