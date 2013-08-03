@@ -630,7 +630,12 @@ mega_upload() {
         IFS=':' read -r OFFSET LENGTH <<<"$C"
 
         log_error "chunk $I/$N: offset: $OFFSET, length: $LENGTH"
-        dd if="$2" bs=1 skip=$OFFSET count=$LENGTH of="$TMP_FILE" 2>/dev/null
+        if (( LENGTH % 131072 == 0 )); then
+            dd if="$2" bs=131072 skip=$((OFFSET/131072)) \
+                count=$((LENGTH/131072)) of="$TMP_FILE" 2>/dev/null
+        else
+            dd if="$2" bs=1 skip=$OFFSET count=$LENGTH of="$TMP_FILE" 2>/dev/null
+        fi
 
         # CBC-MAC of this chunk
         CHUNK_MAC=$(aes_cbc_mac "$TMP_FILE" "$AES_IV4$AES_IV5$AES_IV4$AES_IV5" "$AESKEY")
