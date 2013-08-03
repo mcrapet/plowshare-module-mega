@@ -28,12 +28,13 @@ MODULE_MEGA_DOWNLOAD_FINAL_LINK_NEEDS_COOKIE=no
 MODULE_MEGA_DOWNLOAD_SUCCESSIVE_INTERVAL=
 
 MODULE_MEGA_UPLOAD_OPTIONS="
-AUTH,a,auth,a=EMAIL:PASSWORD,User account (mandatory)
+AUTH,a,auth,a=EMAIL:PASSWORD,User account
 NOSSL,,nossl,,Use HTTP upload url instead of HTTPS
-PRIVATE_FILE,,private,,Do not allow others to download the file"
+PRIVATE_FILE,,private,,Do not allow others to download the file (account only)"
 MODULE_MEGA_UPLOAD_REMOTE_SUPPORT=no
 
 # Globals
+# Note: Be sure to not increment MEGA_SEQ_NO in a subshell but outside.
 declare -r MEGA_CRYPTO="$LIBDIR/plugins/mega"
 declare -i MEGA_SEQ_NO=$(random d 9)
 
@@ -269,6 +270,10 @@ mega_error() {
     'EBLOCKED (-16): User blocked'
     'EOVERQUOTA (-17): Request over quota'
     'ETEMPUNAVAIL (-18): Resource temporarily not available, please try again later'
+    'ETOOMANYCONNECTIONS (-19): Too many connections on this resource'
+    'EWRITE (-20): Write failed'
+    'EREAD (-21): Read failed'
+    'EAPPKEY (-22): Invalid application key; request not processed'
     )
 
     (( $E < 0 && $E > ${#ERRORS[@]} )) && E=0
@@ -276,18 +281,22 @@ mega_error() {
 }
 
 # HTTP (POST) request (client => server)
+# Note: Variables $MEGA_SESSION_ID and $MEGA_SEQ_NO are accessed directly.
 # $1: data to send
 mega_api_req() {
     local -r DATA=$1
     local API_URL='https://eu.api.mega.co.nz'
     local JSON
 
+    # Plowshare official application key
+    local -r APP_KEY='08F3BSqb'
+
     log_debug "$FUNCNAME: '$DATA'"
 
     if [ -z "$MEGA_SESSION_ID" ]; then
-        API_URL="$API_URL/cs?id=$MEGA_SEQ_NO"
+        API_URL="$API_URL/cs?id=$MEGA_SEQ_NO&ak=$APP_KEY"
     else
-        API_URL="$API_URL/cs?id=$MEGA_SEQ_NO&sid=$MEGA_SESSION_ID"
+        API_URL="$API_URL/cs?id=$MEGA_SEQ_NO&ak=$APP_KEY&sid=$MEGA_SESSION_ID"
     fi
 
     JSON=$(curl -X POST --retry 2 --data-binary "[$DATA]" \
@@ -305,16 +314,17 @@ mega_api_req() {
     echo "$JSON"
 }
 
-# RootID
+# Static function. Find RootId
 mega_get_rootid() {
     local JSON
     # First struture is Root ("Cloud Drive"). t=2
     JSON=$(mega_api_req '{"a":"f","c":"1"}') || return
-    (( ++MEGA_SEQ_NO ))
+
+    # FIXME. Crude parsing.
     echo "${JSON%%\"t\":2*}" | parse_json 'h'
 }
 
-# Static function
+# Static function.
 # $1: password string
 mega_prepare_key() {
     local KEY=$1
@@ -427,7 +437,6 @@ mega_anon_login() {
     JSON=$(mega_api_req '{"a":"up","k":"'"$(hex_to_base64 "$ENC_KEY")\
 "'","ts":"'"$(hex_to_base64 "$SESSION_SELF_CHALLENGE$ENC_SSC")"'"}') || \
         return $ERR_LOGIN_FAILED
-    (( ++MEGA_SEQ_NO ))
 
     USER=${JSON#\"}
     USER=${USER%\"}
@@ -571,15 +580,15 @@ mega_upload() {
     local MEGA_SESSION_ID MEGA_MASTER_KEY
 
     if [ ! -f "$MEGA_CRYPTO" ]; then
-        log_error "This module requires a plugin. It can't work without it."
-        return $ERR_FATAL
+        log_error "External mega executable not found: $MEGA_CRYPTO"
+        return $ERR_SYSTEM
     fi
 
     if [ -n "$AUTH" ]; then
         C=$(mega_login "$AUTH") || return
     else
         test "$PRIVATE_FILE" && \
-            log_error "Private file option has no sense here"
+            log_error 'Private file option has no sense here'
         C=$(mega_anon_login) || return
     fi
     { read MEGA_SESSION_ID; read MEGA_MASTER_KEY; } <<< "$C"
@@ -632,11 +641,11 @@ mega_upload() {
 
         # 2 tries
         TOKEN=$(curl -X POST --data-binary "@${TMP_FILE}.enc" \
-               -H 'Origin: Plowshare' "$UP_URL/$OFFSET") || {
-           wait 5 || return
-           log_error "chunk $I/$N: retry";
-           TOKEN=$(curl -X POST --data-binary "@${TMP_FILE}.enc" \
-           -H 'Origin: Plowshare' "$UP_URL/$OFFSET") || return
+                -H 'Origin: Plowshare' "$UP_URL/$OFFSET") || {
+            wait 5 || return
+            log_error "chunk $I/$N: retry";
+            TOKEN=$(curl -X POST --data-binary "@${TMP_FILE}.enc" \
+                    -H 'Origin: Plowshare' "$UP_URL/$OFFSET") || return
         }
 
         # Empty result is not an error.
@@ -687,6 +696,7 @@ $(hex_to_base64 "$FILE_ATTR")\",\"k\":\"$(hex_to_base64 "$ENC_KEY")\"}]"
     # Add new node
     # t : id of target parent node (directory)
     ROOT_ID=$(mega_get_rootid) || return
+    (( ++MEGA_SEQ_NO ))
     JSON=$(mega_api_req '{"a":"p","t":"'"$ROOT_ID"'","n":'"$FILE_DATA"'}')
     (( ++MEGA_SEQ_NO ))
 
