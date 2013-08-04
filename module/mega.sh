@@ -315,7 +315,7 @@ mega_api_req() {
     echo "$JSON"
 }
 
-# Static function. Find RootId
+# Static function. Find RootId (Root Cloud Drive)
 mega_get_rootid() {
     local JSON
     # First struture is Root ("Cloud Drive"). t=2
@@ -328,10 +328,12 @@ mega_get_rootid() {
 # Static function. Find FolderId
 # $1: 128-bit key (hexstring format)
 # $2: (leaf) folder name. No hierarchy ('/' character is valid for a folder name)
+# stdout: first character is permissions
 mega_get_folderid() {
-    local JSON LINE ENC_ATTR ATTR ENC_KEY KEY FOLDER_NAME
     local -r AESKEY=$1
     local -r NAME=$2
+    local JSON LINE ENC_ATTR ATTR ENC_KEY KEY FOLDER_NAME ENC_SHKEY
+    local -a ENC_KEYS
 
     JSON=$(mega_api_req '{"a":"f","c":"1"}' | \
         sed -e 's/}[[:space:]]*[],]/}\n/g' | \
@@ -339,28 +341,49 @@ mega_get_folderid() {
 
     # Grep all directories (one per line). t=1
     # {"h":"FsU3gQCA","p":"YsVBWSzJ","u":"lPymiGWTSiA","t":1,"a":"gd-f0USMKuaPUwcSoqtRXg","k":"lPymiGWTSiA:70ey9v0w0M1cI-Kt1wR98A","ts":1374527356}
+    # {"h":"Ox5WTJ5Q","p":"bk4C1ToD","u":"kz5HBLnEkOM","t":1,"a":"gzz_qwO8ZK9noa6JjpBQIj3PAA4V_VQGEoGtMdraqe4","k":"Ox5WTJ5Q:dJ6oqJEdy6l2fuaoCyq7zQ","r":0,"su":"kz5HBLnEkOM","sk":"kT6_Z94WD7hnc---ISZNHw","ts":1375614490}
     for LINE in $JSON; do
         ENC_ATTR=$(parse_json a <<< "$LINE") || return
         ENC_KEY=$(parse_json k <<< "$LINE") || return
 
-        ENC_KEY=${ENC_KEY#*:}
-        ENC_KEY=${ENC_KEY%/*}
+        IFS=':/' read -r -a ENC_KEYS <<<"$ENC_KEY"
+        ENC_KEY=${ENC_KEYS[1]}
         ENC_KEY=$(base64_to_hex "$ENC_KEY")
-        KEY=$(mega_decrypt_key "$AESKEY" "$ENC_KEY")
+
+        ENC_SHKEY=$(parse_json_quiet sk <<< "$LINE")
+        if [ -n "$ENC_SHKEY" ]; then
+            ENC_SHKEY=$(base64_to_hex "$ENC_SHKEY")
+            SHKEY=$(mega_decrypt_key "$AESKEY" "$ENC_SHKEY")
+            KEY=$(mega_decrypt_key "$SHKEY" "$ENC_KEY")
+        else
+            KEY=$(mega_decrypt_key "$AESKEY" "$ENC_KEY")
+        fi
 
         ENC_ATTR=$(base64_to_hex "$ENC_ATTR")
         ATTR=$(mega_dec_attr "$ENC_ATTR" "$KEY") || return
         FOLDER_NAME=$(echo "$ATTR" | parse_json n) || return
 
         if [ "$FOLDER_NAME" = "$NAME" ]; then
-            local H
+            local H R
             H=$(parse_json h <<< "$LINE") || return
             log_debug "found '$NAME', h:'$H'"
-            echo "$H"
+
+            # Check permissions (readonly: r=0 ; readwrite: r=1 ; fullaccess: r=2)
+            R=$(parse_json_quiet r <<< "$LINE")
+            if [[ -z "$R" ]]; then
+                # local folder
+                echo "l$H"
+            elif [[ "$R" = '0' ]]; then
+                log_error "Shared folder seems to be read only. Aborting."
+                return $ERR_LINK_NEED_PERMISSIONS
+            else
+                # remote folder
+                echo "r$H"
+            fi
             return 0
         fi
 
-        #log_debug "available folder: '$FOLDER_NAME'"
+        #log_error "available folder: '$FOLDER_NAME'"
     done
 
     log_error "No folder named '$NAME' has been found. Aborting."
@@ -753,13 +776,13 @@ $(hex_to_base64 "$FILE_ATTR")\",\"k\":\"$(hex_to_base64 "$ENC_KEY")\"}]"
 
     # Add new node
     # t : id of target parent node (directory)
-    JSON=$(mega_api_req '{"a":"p","t":"'"$FOLDER_ID"'","n":'"$FILE_DATA"'}')
+    JSON=$(mega_api_req '{"a":"p","t":"'"${FOLDER_ID:1}"'","n":'"$FILE_DATA"'}')
     (( ++MEGA_SEQ_NO ))
 
     FILE_ID=$(parse_json h <<< "$JSON")
     log_debug "file id (private): '$FILE_ID'"
 
-    if [ -z "$PRIVATE_FILE" ]; then
+    if [ -z "$PRIVATE_FILE" -a "${FOLDER_ID:0:1}" = 'l' ]; then
         # Create public handle
         FILE_ID=$(mega_api_req '{"a":"l","n":"'"$FILE_ID"'"}') || return
         (( ++MEGA_SEQ_NO ))
