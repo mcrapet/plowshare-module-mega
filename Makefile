@@ -41,7 +41,7 @@ uninstall: check_plowdir
 ifeq ($(DESTDIR),)
 	@(grep -q '^mega[[:space:]]' $(PLOWDIR)/modules/config && \
 	        echo 'unpatching modules/config file' && \
-	        sed -ie '/^mega[[:space:]]/d' $(PLOWDIR)/modules/config ) || true
+	        sed -i -e '/^mega[[:space:]]/d' $(PLOWDIR)/modules/config ) || true
 endif
 
 # Note: sed -i is not BSD friendly!
