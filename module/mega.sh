@@ -31,13 +31,14 @@ MODULE_MEGA_UPLOAD_OPTIONS="
 AUTH,a,auth,a=EMAIL:PASSWORD,User account
 FOLDER,,folder,s=FOLDER,Folder to upload files into (account only)
 NOSSL,,nossl,,Use HTTP upload url instead of HTTPS
-PRIVATE_FILE,,private,,Do not allow others to download the file (account only)"
+PRIVATE_FILE,,private,,Do not allow others to download the file (account only)
+EUROPE,,eu,,Use eu.api.mega.co.nz servers instead of g.api.mega.co.nz"
 MODULE_MEGA_UPLOAD_REMOTE_SUPPORT=no
 
 # Globals
 # Note: Be sure to not increment MEGA_SEQ_NO in a subshell but outside.
 declare -r MEGA_CRYPTO="$LIBDIR/plugins/mega"
-declare -i MEGA_SEQ_NO=$(random d 9)
+declare -i MEGA_SEQ_NO=$(random d 10)
 
 # $1: hex buffer
 # stdout: base64 buffer (MEGA variant)
@@ -286,8 +287,13 @@ mega_error() {
 # $1: data to send
 mega_api_req() {
     local -r DATA=$1
-    local API_URL='https://eu.api.mega.co.nz'
-    local JSON
+    local JSON API_URL
+
+    if [ -z "$EUROPE" ]; then
+        API_URL='https://eu.api.mega.co.nz'
+    else
+        API_URL='https://g.api.mega.co.nz'
+    fi
 
     # Plowshare official application key
     local -r APP_KEY='08F3BSqb'
@@ -318,9 +324,11 @@ mega_api_req() {
 # Static function. Find RootId (Root Cloud Drive)
 mega_get_rootid() {
     local JSON
-    # First struture is Root ("Cloud Drive"). t=2
+
+    # command "f": Fetch node tree
     JSON=$(mega_api_req '{"a":"f","c":"1"}') || return
 
+    # t=2: root node ("Cloud Drive")
     # FIXME. Crude parsing.
     echo "${JSON%%\"t\":2*}" | parse_json 'h'
 }
@@ -335,6 +343,7 @@ mega_get_folderid() {
     local JSON LINE ENC_ATTR ATTR ENC_KEY KEY FOLDER_NAME ENC_SHKEY
     local -a ENC_KEYS
 
+    # command "f": Fetch node tree
     JSON=$(mega_api_req '{"a":"f","c":"1"}' | \
         sed -e 's/}[[:space:]]*[],]/}\n/g' | \
         sed -ne '/"t"[[:space:]]*:[[:space:]]*1/p') || return
@@ -368,7 +377,8 @@ mega_get_folderid() {
             H=$(parse_json h <<< "$LINE") || return
             log_debug "found '$NAME', h:'$H'"
 
-            # Check permissions (readonly: r=0 ; readwrite: r=1 ; fullaccess: r=2)
+            # Check permissions. If accesslevel is present:
+            # readonly: r=0 ; readwrite: r=1 ; fullaccess: r=2; owner: r=4
             R=$(parse_json_quiet r <<< "$LINE")
             if [[ -z "$R" ]]; then
                 # local folder
@@ -447,7 +457,7 @@ mega_login() {
     AESKEY=$(mega_prepare_key "$PASSWORD") || return $ERR_LOGIN_FAILED
     HASH=$(mega_stringhash "$EMAIL" "$AESKEY") || return $ERR_LOGIN_FAILED
 
-    # us: Login session challenge/response
+    # command "us": Login session challenge/response
     # uh: AES stringhash (of login+password)
     JSON=$(mega_api_req '{"a":"us","user":"'"$EMAIL"'","uh":"'"$HASH"'"}') || \
         return $ERR_LOGIN_FAILED
@@ -473,10 +483,10 @@ mega_login() {
 
     read ENC_CSID_N < <(mpi_parse $(base64_to_hex "$CSID") 1)
 
-    log_debug "uncrpyt session ID with RSA Private Key"
+    log_debug 'uncrpyt session ID with RSA Private Key'
 
     CSID_N=$($MEGA_CRYPTO rsa "$RSA_P" "$RSA_Q" "$RSA_D" "$ENC_CSID_N") || {
-        log_error "rsa failure";
+        log_error 'rsa failure';
         return $ERR_FATAL;
     }
 
@@ -674,6 +684,7 @@ mega_upload() {
 
     SZ=$(get_filesize "$FILE") || return
 
+    # command "u": Request upload target URL
     # TODO: see extra paramters: "ms":0, "r":0, "e":0
     if [ -z "$NOSSL" ]; then
         JSON=$(mega_api_req '{"a":"u","ssl":1,"s":'$SZ'}') || return
@@ -770,11 +781,12 @@ mega_upload() {
     FILE_ATTR=$(mega_enc_attr '{"n":"'"$DESTFILE"'"}' "$AESKEY")
     ENC_KEY=$(mega_encrypt_key "$MEGA_MASTER_KEY" "$NODE_KEY")
 
-    # Node type = file (0)
+    # h: new node; ph: new public node
+    # t=0: regular file node
     FILE_DATA="[{\"h\":\"$TOKEN\",\"t\":0,\"a\":\"\
 $(hex_to_base64 "$FILE_ATTR")\",\"k\":\"$(hex_to_base64 "$ENC_KEY")\"}]"
 
-    # Add new node
+    # command "p": Put nodes
     # t : id of target parent node (directory)
     JSON=$(mega_api_req '{"a":"p","t":"'"${FOLDER_ID:1}"'","n":'"$FILE_DATA"'}')
     (( ++MEGA_SEQ_NO ))
@@ -783,7 +795,7 @@ $(hex_to_base64 "$FILE_ATTR")\",\"k\":\"$(hex_to_base64 "$ENC_KEY")\"}]"
     log_debug "file id (private): '$FILE_ID'"
 
     if [ -z "$PRIVATE_FILE" -a "${FOLDER_ID:0:1}" = 'l' ]; then
-        # Create public handle
+        # command "l": Set public handle
         FILE_ID=$(mega_api_req '{"a":"l","n":"'"$FILE_ID"'"}') || return
         (( ++MEGA_SEQ_NO ))
 
