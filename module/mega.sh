@@ -490,7 +490,7 @@ mega_login() {
         return $ERR_FATAL;
     }
 
-    (( ${#CSID_N} % 2 != 0 )) && CSID_N="00$CSID_N"
+    (( ${#CSID_N} % 2 != 0 )) && CSID_N="0$CSID_N"
 
     # Session ID length is 43 bytes
     hex_to_base64 "${CSID_N:0:86}"
