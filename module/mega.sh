@@ -331,16 +331,17 @@ mega_get_rootid() {
     # t=2: root node ("Cloud Drive")
     # FIXME. Crude parsing.
     echo "${JSON%%\"t\":2*}" | parse_json 'h'
+    echo
 }
 
 # Static function. Find FolderId
 # $1: 128-bit key (hexstring format)
 # $2: (leaf) folder name. No hierarchy ('/' character is valid for a folder name)
-# stdout: first character is permissions
+# stdout (2 lines): folder handle + shared master key (empty for local folders)
 mega_get_folderid() {
     local -r AESKEY=$1
     local -r NAME=$2
-    local JSON LINE ENC_ATTR ATTR ENC_KEY KEY FOLDER_NAME ENC_SHKEY
+    local JSON LINE ENC_ATTR ATTR ENC_KEY KEY FOLDER_NAME ENC_SHKEY SHKEY
     local -a ENC_KEYS
 
     # command "f": Fetch node tree
@@ -365,6 +366,7 @@ mega_get_folderid() {
             SHKEY=$(mega_decrypt_key "$AESKEY" "$ENC_SHKEY")
             KEY=$(mega_decrypt_key "$SHKEY" "$ENC_KEY")
         else
+            SHKEY=''
             KEY=$(mega_decrypt_key "$AESKEY" "$ENC_KEY")
         fi
 
@@ -380,16 +382,13 @@ mega_get_folderid() {
             # Check permissions. If accesslevel is present:
             # readonly: r=0 ; readwrite: r=1 ; fullaccess: r=2; owner: r=4
             R=$(parse_json_quiet r <<< "$LINE")
-            if [[ -z "$R" ]]; then
-                # local folder
-                echo "l$H"
-            elif [[ "$R" = '0' ]]; then
+            if [[ "$R" = '0' ]]; then
                 log_error "Shared folder seems to be read only. Aborting."
                 return $ERR_LINK_NEED_PERMISSIONS
-            else
-                # remote folder
-                echo "r$H"
             fi
+
+            echo "$H"
+            echo "$SHKEY"
             return 0
         fi
 
@@ -652,8 +651,8 @@ mega_upload() {
     local SZ TMP_FILE JSON UP_URL C OFFSET LENGTH FOLDER_ID
     local AESKEY AES_IV4 AES_IV5 TOKEN FILE_MAC CHUNK_MAC
     local META_MAC_HI META_MAC_LO KEY_1 KEY_2 KEY_3 KEY_4 NODE_KEY
-    local FILE_ATTR ENC_KEY FILE_DATA FILE_ID
-    local MEGA_SESSION_ID MEGA_MASTER_KEY
+    local FILE_ATTR ENC_KEY FILE_DATA FILE_ID SHARE_DATA
+    local MEGA_SESSION_ID MEGA_MASTER_KEY MEGA_SHARED_KEY
 
     if [ ! -f "$MEGA_CRYPTO" ]; then
         log_error "External mega executable not found: $MEGA_CRYPTO"
@@ -676,11 +675,12 @@ mega_upload() {
     log_debug "session ID: '$MEGA_SESSION_ID'"
 
     if [ -n "$AUTH" -a -n "$FOLDER" ]; then
-        FOLDER_ID=$(mega_get_folderid "$MEGA_MASTER_KEY" "$FOLDER") || return
+        C=$(mega_get_folderid "$MEGA_MASTER_KEY" "$FOLDER") || return
     else
-        FOLDER_ID=$(mega_get_rootid) || return
+        C=$(mega_get_rootid) || return
     fi
     (( ++MEGA_SEQ_NO ))
+    { read FOLDER_ID; read MEGA_SHARED_KEY; } <<< "$C"
 
     SZ=$(get_filesize "$FILE") || return
 
@@ -779,29 +779,42 @@ mega_upload() {
     log_debug "upload node key: $NODE_KEY"
 
     FILE_ATTR=$(mega_enc_attr '{"n":"'"$DESTFILE"'"}' "$AESKEY")
-    ENC_KEY=$(mega_encrypt_key "$MEGA_MASTER_KEY" "$NODE_KEY")
 
     # h: new node; ph: new public node
     # t=0: regular file node
-    FILE_DATA="[{\"h\":\"$TOKEN\",\"t\":0,\"a\":\"\
-$(hex_to_base64 "$FILE_ATTR")\",\"k\":\"$(hex_to_base64 "$ENC_KEY")\"}]"
+    ENC_KEY=$(mega_encrypt_key "$MEGA_MASTER_KEY" "$NODE_KEY")
+    FILE_DATA="{\"h\":\"$TOKEN\",\"t\":0,\"a\":\"\
+$(hex_to_base64 "$FILE_ATTR")\",\"k\":\"$(hex_to_base64 "$ENC_KEY")\"}"
 
-    # command "p": Put nodes
-    # t : id of target parent node (directory)
-    JSON=$(mega_api_req '{"a":"p","t":"'"${FOLDER_ID:1}"'","n":'"$FILE_DATA"'}')
-    (( ++MEGA_SEQ_NO ))
-
-    FILE_ID=$(parse_json h <<< "$JSON")
-    log_debug "file id (private): '$FILE_ID'"
-
-    if [ -z "$PRIVATE_FILE" -a "${FOLDER_ID:0:1}" = 'l' ]; then
-        # command "l": Set public handle
-        FILE_ID=$(mega_api_req '{"a":"l","n":"'"$FILE_ID"'"}') || return
+    if [ -z "$MEGA_SHARED_KEY" ]; then
+        # command "p": Put nodes
+        # t : id of target parent node (directory)
+        JSON=$(mega_api_req '{"a":"p","t":"'"$FOLDER_ID"'","n":['"$FILE_DATA"']}') || return
         (( ++MEGA_SEQ_NO ))
 
-        FILE_ID=${FILE_ID#\"}
-        FILE_ID=${FILE_ID%\"}
-        log_debug "file id (public): '$FILE_ID'"
+        FILE_ID=$(parse_json h <<< "$JSON")
+        log_debug "file id (private): '$FILE_ID'"
+
+        if [ -z "$PRIVATE_FILE" ]; then
+            # command "l": Set public handle
+            FILE_ID=$(mega_api_req '{"a":"l","n":"'"$FILE_ID"'"}') || return
+            (( ++MEGA_SEQ_NO ))
+
+            FILE_ID=${FILE_ID#\"}
+            FILE_ID=${FILE_ID%\"}
+            log_debug "file id (public): '$FILE_ID'"
+        fi
+    else
+        ENC_KEY=$(mega_encrypt_key "$MEGA_SHARED_KEY" "$NODE_KEY")
+        SHARE_DATA="[\"$FOLDER_ID\"],[\"$TOKEN\"],[0,0,\"$(hex_to_base64 "$ENC_KEY")\"]"
+
+        # command "p": Put nodes
+        # t : id of target parent node (directory)
+        JSON=$(mega_api_req '{"a":"p","t":"'"$FOLDER_ID"'","n":['"$FILE_DATA"'],"cr":['"$SHARE_DATA"']}') || return
+        (( ++MEGA_SEQ_NO ))
+
+        FILE_ID=$(parse_json h <<< "$JSON")
+        log_debug "file id (in shared folder): '$FILE_ID'"
     fi
 
     echo 'http://mega.co.nz/#!'"$FILE_ID"'!'"$(hex_to_base64 $NODE_KEY)"
