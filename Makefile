@@ -54,4 +54,7 @@ ifeq ($(DESTDIR),)
 	@test -f $(PLOWDIR)/core.sh || { echo 'Invalid PLOWDIR, this is not a plowshare directory! Can'\''t find core.sh. Abort.'; false; }
 endif
 
+name:
+	@echo "git$$(date +%Y%m%d).$$(git log --pretty=format:%h -1 master)"
+
 .PHONY: install uninstall check_plowdir clean
