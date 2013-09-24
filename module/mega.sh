@@ -20,7 +20,7 @@
 #
 # Note: This module requires: hexdump, dd, base64, plugin/mega executable
 
-MODULE_MEGA_REGEXP_URL="https\?://\(www\.\)\?mega\.co\.nz/"
+MODULE_MEGA_REGEXP_URL='https\?://\(www\.\)\?mega\.co\.nz/'
 
 MODULE_MEGA_DOWNLOAD_OPTIONS=""
 MODULE_MEGA_DOWNLOAD_RESUME=no
@@ -383,7 +383,7 @@ mega_get_folderid() {
             # readonly: r=0 ; readwrite: r=1 ; fullaccess: r=2; owner: r=4
             R=$(parse_json_quiet r <<< "$LINE")
             if [[ "$R" = '0' ]]; then
-                log_error "Shared folder seems to be read only. Aborting."
+                log_error 'Shared folder seems to be read only. Aborting.'
                 return $ERR_LINK_NEED_PERMISSIONS
             fi
 
@@ -406,8 +406,8 @@ mega_prepare_key() {
     local REM
 
     if [ "${#KEY}" -gt 16 ]; then
-        log_error "Your password is >16 characters, it is not supported actually."
-        log_error "This would requires some more crypo (65536 openssl calls). Too slow for now.."
+        log_error 'Your password is >16 characters, it is not supported actually.'
+        log_error 'This would requires some more crypo (65536 openssl calls). Too slow for now..'
         return $ERR_FATAL
     fi
 
@@ -518,7 +518,7 @@ mega_anon_login() {
     log_debug "user handle: '$USER'"
 
     if [ -z "$USER" ]; then
-        log_error "unable to create ephemeral account"
+        log_error 'unable to create ephemeral account'
         return $ERR_LOGIN_FAILED
     fi
 
@@ -533,7 +533,7 @@ mega_anon_login() {
     ENC_MASTER_KEY=$(base64_to_hex "$K")
 
     if [ "$ENC_MASTER_KEY" != "$ENC_KEY" ]; then
-        log_error "master key mismatch!"
+        log_error 'master key mismatch!'
         return $ERR_LOGIN_FAILED
     fi
 
@@ -556,12 +556,12 @@ mega_download() {
     IFS="!" read -r _ FILE_ID FILE_KEY <<< "$URL"
 
     if [ -z "$FILE_ID" ]; then
-        log_error "file id is missing, bad link"
+        log_error 'file id is missing, bad link'
         return $ERR_FATAL
     fi
 
     if [ -z "$FILE_KEY" ]; then
-        log_error "file key is missing, bad link"
+        log_error 'file key is missing, bad link'
         return $ERR_FATAL
     fi
 
@@ -628,7 +628,7 @@ mega_download() {
 
     log_debug "meta-MAC: $CHECK_MAC_HI$CHECK_MAC_LO"
     if [ "$META_MAC" = "$CHECK_MAC_HI$CHECK_MAC_LO" ]; then
-        log_debug "meta mac correct"
+        log_debug 'meta mac correct'
 
         echo "file://${TMP_FILE}.dec"
         echo "$FILE_NAME"
@@ -762,7 +762,7 @@ mega_upload() {
     rm "$TMP_FILE" "${TMP_FILE}.enc"
 
     if [ -z "$TOKEN" ]; then
-        log_error "Empty upload token (completion handle)"
+        log_error 'Empty upload token (completion handle)'
         # Cancel upload ?
         #mega_api_req '{"a":"u","t":"'"$UP_URL"'"}'
         return $ERR_FATAL
