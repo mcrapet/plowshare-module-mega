@@ -817,5 +817,5 @@ $(hex_to_base64 "$FILE_ATTR")\",\"k\":\"$(hex_to_base64 "$ENC_KEY")\"}"
         log_debug "file id (in shared folder): '$FILE_ID'"
     fi
 
-    echo 'http://mega.co.nz/#!'"$FILE_ID"'!'"$(hex_to_base64 $NODE_KEY)"
+    echo 'https://mega.co.nz/#!'"$FILE_ID"'!'"$(hex_to_base64 $NODE_KEY)"
 }
