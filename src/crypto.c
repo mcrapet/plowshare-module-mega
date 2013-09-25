@@ -328,7 +328,8 @@ int main (int argc, char *argv[])
     if (p == NULL || (strcmp(p, "--help") == 0)) {
         usage(argv[0]);
     } else if (strcmp(p, "--version") == 0) {
-        fprintf(stdout, "%s: version 1.0\n", argv[0]);
+        fprintf(stdout, "%s: version 1.1 (built using %s)\n",
+            argv[0], OPENSSL_VERSION_TEXT);
 
     } else if (strcmp(p, "cbc_enc") == 0) {
 
