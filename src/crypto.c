@@ -30,7 +30,7 @@
 #include <openssl/err.h>
 
 #define AES_KEYSIZE_128       16
-#define MAX_BUFFER_LENGTH    (64*AES_KEYSIZE_128)
+#define MAX_BUFFER_LENGTH    (64*AES_BLOCK_SIZE)
 
 /* Same errors used by Plowshare (core.sh) */
 #define ERR_FATAL              1
@@ -73,8 +73,15 @@ static int aes_128_cbc_mac (FILE *fd, const unsigned char key[AES_KEYSIZE_128],
     len -= MAX_BUFFER_LENGTH;
   }
 
-  if (len > 0 && fread(buffer, 1, len, fd) > 0) {
-    AES_cbc_encrypt(buffer, buffer, len, &akey, iv, AES_ENCRYPT);
+  if (len > 0) {
+    unsigned long n; /* len rounded up to next multiple of AES_BLOCK_SIZE */
+    n = (len + AES_BLOCK_SIZE - 1) / AES_BLOCK_SIZE * AES_BLOCK_SIZE;
+    memset(buffer + n - AES_BLOCK_SIZE, 0, AES_BLOCK_SIZE);
+    if (fread(buffer, 1, len, fd) <= 0) {
+      fprintf(stderr, "error: fread (len=%ld)\n", len);
+      return ERR_FATAL;
+    }
+    AES_cbc_encrypt(buffer, buffer, n, &akey, iv, AES_ENCRYPT);
   }
 
   return 0;
