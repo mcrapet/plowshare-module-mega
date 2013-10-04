@@ -8,9 +8,9 @@ You can define a custom installation prefix (default prefix is /usr/local):
 
 $ make install PREFIX=/usr
 
-If you are directly working on a cloned git repository you can do:
+If you are directly working on a cloned plowshare git repository you can do:
 
-$ PLOWDIR=/.../src make install
+$ PLOWDIR=/path/to/plowshare/src make install
 
 
 # vim: set fileencoding utf-8
