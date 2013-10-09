@@ -32,7 +32,7 @@ install: check_plowdir compile
 ifeq ($(DESTDIR),)
 	@grep -q '^mega[[:space:]]' $(PLOWDIR)/modules/config || { \
 	        echo 'patching modules/config file' && \
-	        echo 'mega            | download | upload |        |      |       |' >> $(PLOWDIR)/modules/config; }
+	        echo 'mega            | download | upload |        |      | probe |' >> $(PLOWDIR)/modules/config; }
 endif
 
 uninstall: check_plowdir

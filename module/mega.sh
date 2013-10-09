@@ -35,6 +35,8 @@ PRIVATE_FILE,,private,,Do not allow others to download the file (account only)
 EUROPE,,eu,,Use eu.api.mega.co.nz servers instead of g.api.mega.co.nz"
 MODULE_MEGA_UPLOAD_REMOTE_SUPPORT=no
 
+MODULE_MEGA_PROBE_OPTIONS=""
+
 # Globals
 # Note: Be sure to not increment MEGA_SEQ_NO in a subshell but outside.
 declare -r MEGA_CRYPTO="$LIBDIR/plugins/mega"
@@ -313,6 +315,7 @@ mega_api_req() {
     JSON=${JSON%]}
 
     if [ ${#JSON} -le 3 ]; then
+        [ "$JSON" != '-9' ] || return $ERR_LINK_DEAD
         mega_error "$JSON"
         [ "$JSON" != '-3' ] || return $ERR_NETWORK
         return $ERR_FATAL
@@ -818,4 +821,50 @@ $(hex_to_base64 "$FILE_ATTR")\",\"k\":\"$(hex_to_base64 "$ENC_KEY")\"}"
     fi
 
     echo 'https://mega.co.nz/#!'"$FILE_ID"'!'"$(hex_to_base64 $NODE_KEY)"
+}
+
+# Probe a download URL
+# $1: cookie file (unused here)
+# $2: mega url
+# $3: requested capability list
+# stdout: 1 capability per line
+mega_probe() {
+    local -r URL=$2
+    local REQ_IN=$3
+    local JSON FILE_ID FILE_KEY REQ_OUT
+
+    IFS="!" read -r _ FILE_ID FILE_KEY <<< "$URL"
+
+    if [ -z "$FILE_ID" ]; then
+        log_error 'File id is missing, bad link'
+        return $ERR_FATAL
+    fi
+
+    if [ -z "$FILE_KEY" ]; then
+        log_error 'File key is missing, decryption key is required to get filename'
+        REQ_IN=${REQ_IN/f}
+    fi
+
+    # Note: Suitable status is returned for dead links
+    JSON=$(mega_api_req '{"a":"g","g":1,"p":"'"$FILE_ID"'"}') || return
+    (( ++MEGA_SEQ_NO ))
+
+    REQ_OUT=c
+
+    if [[ $REQ_IN = *f* ]]; then
+        local KEY AESKEY ENC_ATTR
+
+        KEY=$(base64_to_hex "$FILE_KEY")
+        AESKEY=$(hex_xor "${KEY:0:32}" "${KEY:32:32}")
+        ENC_ATTR=$(echo "$JSON" | parse_json at) || return
+        ENC_ATTR=$(base64_to_hex "$ENC_ATTR")
+        parse_json n < <(mega_dec_attr "$ENC_ATTR" "$AESKEY") && \
+            REQ_OUT="${REQ_OUT}f"
+    fi
+
+    if [[ $REQ_IN = *s* ]]; then
+        parse_json s <<< "$JSON" && REQ_OUT="${REQ_OUT}s"
+    fi
+
+    echo $REQ_OUT
 }
