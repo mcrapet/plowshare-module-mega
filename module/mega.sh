@@ -500,49 +500,49 @@ mega_login() {
     echo "$MASTER_KEY"
 }
 
-mega_anon_login() {
-    local AESKEY JSON MASTER_KEY SESSION_SELF_CHALLENGE ENC_KEY ENC_SSC
-    local ENC_MASTER_KEY USER K TSID
-
-    # AES 128-bit key
-    AESKEY=$(mega_prepare_key "$(random ll 16)")
-    MASTER_KEY=$(random H 32)
-    SESSION_SELF_CHALLENGE=$(random H 32)
-
-    ENC_KEY=$(mega_encrypt_key "$MASTER_KEY" "$AESKEY")
-    ENC_SSC=$(mega_encrypt_key "$SESSION_SELF_CHALLENGE" "$MASTER_KEY")
-
-    JSON=$(mega_api_req '{"a":"up","k":"'"$(hex_to_base64 "$ENC_KEY")\
-"'","ts":"'"$(hex_to_base64 "$SESSION_SELF_CHALLENGE$ENC_SSC")"'"}') || \
-        return $ERR_LOGIN_FAILED
-
-    USER=${JSON#\"}
-    USER=${USER%\"}
-    log_debug "user handle: '$USER'"
-
-    if [ -z "$USER" ]; then
-        log_error 'unable to create ephemeral account'
-        return $ERR_LOGIN_FAILED
-    fi
-
-    JSON=$(mega_api_req '{"a":"us","user":"'"$USER"'"}') || \
-        return $ERR_LOGIN_FAILED
-
-    # k: master key (encrypted with $AESKEY)
-    # tsid: the session ID
-    K=$(echo "$JSON" | parse_json k) || return
-    TSID=$(echo "$JSON" | parse_json tsid) || return
-
-    ENC_MASTER_KEY=$(base64_to_hex "$K")
-
-    if [ "$ENC_MASTER_KEY" != "$ENC_KEY" ]; then
-        log_error 'master key mismatch!'
-        return $ERR_LOGIN_FAILED
-    fi
-
-    echo "$TSID"
-    echo "$MASTER_KEY"
-}
+#mega_anon_login() {
+#    local AESKEY JSON MASTER_KEY SESSION_SELF_CHALLENGE ENC_KEY ENC_SSC
+#    local ENC_MASTER_KEY USER K TSID
+#
+#    # AES 128-bit key
+#    AESKEY=$(mega_prepare_key "$(random ll 16)")
+#    MASTER_KEY=$(random H 32)
+#    SESSION_SELF_CHALLENGE=$(random H 32)
+#
+#    ENC_KEY=$(mega_encrypt_key "$MASTER_KEY" "$AESKEY")
+#    ENC_SSC=$(mega_encrypt_key "$SESSION_SELF_CHALLENGE" "$MASTER_KEY")
+#
+#    JSON=$(mega_api_req '{"a":"up","k":"'"$(hex_to_base64 "$ENC_KEY")\
+#"'","ts":"'"$(hex_to_base64 "$SESSION_SELF_CHALLENGE$ENC_SSC")"'"}') || \
+#        return $ERR_LOGIN_FAILED
+#
+#    USER=${JSON#\"}
+#    USER=${USER%\"}
+#    log_debug "user handle: '$USER'"
+#
+#    if [ -z "$USER" ]; then
+#        log_error 'unable to create ephemeral account'
+#        return $ERR_LOGIN_FAILED
+#    fi
+#
+#    JSON=$(mega_api_req '{"a":"us","user":"'"$USER"'"}') || \
+#        return $ERR_LOGIN_FAILED
+#
+#    # k: master key (encrypted with $AESKEY)
+#    # tsid: the session ID
+#    K=$(echo "$JSON" | parse_json k) || return
+#    TSID=$(echo "$JSON" | parse_json tsid) || return
+#
+#    ENC_MASTER_KEY=$(base64_to_hex "$K")
+#
+#    if [ "$ENC_MASTER_KEY" != "$ENC_KEY" ]; then
+#        log_error 'master key mismatch!'
+#        return $ERR_LOGIN_FAILED
+#    fi
+#
+#    echo "$TSID"
+#    echo "$MASTER_KEY"
+#}
 
 # Output an mega.co.nz file download URL
 # $1: cookie file (unused here)
@@ -662,16 +662,10 @@ mega_upload() {
         return $ERR_SYSTEM
     fi
 
-    if [ -n "$AUTH" ]; then
-        C=$(mega_login "$AUTH") || return
+    # Sanity check
+    [ -n "$AUTH" ] || return $ERR_LINK_NEED_PERMISSIONS
 
-    else
-        test "$FOLDER" && \
-            log_error 'Folder setting is for user account only! Ignoring.'
-        test "$PRIVATE_FILE" && \
-            log_error 'Private file option has no sense here'
-        C=$(mega_anon_login) || return
-    fi
+    C=$(mega_login "$AUTH") || return
     { read MEGA_SESSION_ID; read MEGA_MASTER_KEY; } <<< "$C"
     (( ++MEGA_SEQ_NO ))
 
