@@ -2,6 +2,11 @@ MEGA plugin for Plowshare : installation notes
 
 $ make install
 
+# In common case, plowshare4 is already installed and you want to add
+# mega in plowshare4's internal configuration file. You should invoke:
+
+$ make patch_config
+
 Note: for non-root users, adding sudo might be necessary.
 
 You can define a custom installation prefix (default prefix is /usr/local):
@@ -10,7 +15,7 @@ $ make install PREFIX=/usr
 
 If you are directly working on a cloned plowshare git repository you can do:
 
-$ PLOWDIR=/path/to/plowshare/src make install
+$ PLOWDIR=/path/to/plowshare/src make install patch_config
 
 
 # vim: set fileencoding utf-8

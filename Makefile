@@ -1,6 +1,8 @@
 ##
 # mega.co.nz plugin for Plowshare
-# This Makefile follow GNU conventions and support the $(DESTDIR) variable.
+# Usage:
+# - make PREFIX=/usr install
+# - make PREFIX=/usr DESTDIR=/tmp/packaging install
 ##
 
 # TODO:
@@ -8,12 +10,13 @@
 # - check for openssl libs (libcrypto.so)
 
 # Paths you can override
-PREFIX   = /usr
-PLOWDIR ?= $(PREFIX)/share/plowshare4
+PREFIX  ?= /usr/local
+PLOWDIR ?= $(DESTDIR)$(PREFIX)/share/plowshare4
 
 # Compiler and tools
 CC = gcc
-CFLAGS = -Wall -O3 -s
+CFLAGS = -Wall -O3
+STRIP = strip
 INSTALL = install
 RM = rm -f
 
@@ -22,37 +25,37 @@ SRC = src/crypto.c
 OUT = mega
 
 # Rules
-compile: $(SRC)
-	$(CC) $(CFLAGS) $(SRC) -o $(OUT) -lcrypto
+$(OUT): $(SRC)
+	$(CC) $(CFLAGS) $< -o $@ -lcrypto
+	$(STRIP) $@
 
-install: check_plowdir compile
-	$(INSTALL) -d $(DESTDIR)$(PLOWDIR)/plugins
-	$(INSTALL) -m 755 $(OUT) $(DESTDIR)$(PLOWDIR)/plugins/mega
-	$(INSTALL) -D -m 644 module/mega.sh $(DESTDIR)$(PLOWDIR)/modules/mega.sh
-ifeq ($(DESTDIR),)
-	@grep -q '^mega[[:space:]]' $(PLOWDIR)/modules/config || { \
-	        echo 'patching modules/config file' && \
-	        echo 'mega            | download | upload |        |      | probe |' >> $(PLOWDIR)/modules/config; }
-endif
+install: $(OUT)
+	$(INSTALL) -d $(PLOWDIR)/modules
+	$(INSTALL) -d $(PLOWDIR)/plugins
+	$(INSTALL) -m 755 $(OUT) $(PLOWDIR)/plugins/mega
+	$(INSTALL) -m 644 module/mega.sh $(PLOWDIR)/modules
 
-uninstall: check_plowdir
+uninstall:
 	$(RM) $(PLOWDIR)/plugins/mega
 	$(RM) $(PLOWDIR)/modules/mega.sh
-ifeq ($(DESTDIR),)
-	@(grep -q '^mega[[:space:]]' $(PLOWDIR)/modules/config && \
-	        echo 'unpatching modules/config file' && \
-	        sed -i -e '/^mega[[:space:]]/d' $(PLOWDIR)/modules/config ) || true
-endif
-
-# Note: sed -i is not BSD friendly!
 
 clean:
 	@$(RM) $(OUT)
 
 check_plowdir:
-ifeq ($(DESTDIR),)
-	@test -f $(PLOWDIR)/core.sh || { echo 'Invalid PLOWDIR, this is not a plowshare directory! Can'\''t find core.sh. Abort.'; false; }
-endif
+	@test -f $(PLOWDIR)/core.sh || \
+		{ echo 'Invalid PLOWDIR, this is not a plowshare directory! Can'\''t find core.sh. Abort.'; false; }
+
+patch_config: $(PLOWDIR)/modules/config
+	@grep -q '^mega[[:space:]]' $< || { \
+		echo 'patching modules/config file' && \
+		echo 'mega            | download | upload |        |      | probe |' >> $<; }
+
+# Note: sed -i is not BSD friendly!
+unpatch_config: $(PLOWDIR)/modules/config
+	@grep -q '^mega[[:space:]]' $< && \
+		echo 'unpatching modules/config file' && \
+		sed -i -e '/^mega[[:space:]]/d' $< || true
 
 name:
 	@echo "git$$(date +%Y%m%d).$$(git log --pretty=format:%h -1 master)"
