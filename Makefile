@@ -15,8 +15,7 @@ PLOWDIR ?= $(DESTDIR)$(PREFIX)/share/plowshare4
 
 # Compiler and tools
 CC = gcc
-CFLAGS = -Wall -O3
-STRIP = strip
+CFLAGS = -Wall -O3 -s
 INSTALL = install
 RM = rm -f
 
@@ -27,7 +26,6 @@ OUT = mega
 # Rules
 $(OUT): $(SRC)
 	$(CC) $(CFLAGS) $< -o $@ -lcrypto
-	$(STRIP) $@
 
 install: $(OUT)
 	$(INSTALL) -d $(PLOWDIR)/modules
