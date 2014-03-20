@@ -49,13 +49,9 @@ patch_config: $(PLOWDIR)/modules/config
 		echo 'patching modules/config file' && \
 		echo 'mega            | download | upload |        |      | probe |' >> $<; }
 
-# Note: sed -i is not BSD friendly!
 unpatch_config: $(PLOWDIR)/modules/config
 	@grep -q '^mega[[:space:]]' $< && \
 		echo 'unpatching modules/config file' && \
-		sed -i -e '/^mega[[:space:]]/d' $< || true
-
-name:
-	@echo "git$$(date +%Y%m%d).$$(git log --pretty=format:%h -1 master)"
+		mv $< $<.bak && sed -e '/^mega[[:space:]]/d' $<.bak > $< || true
 
 .PHONY: install uninstall check_plowdir clean
