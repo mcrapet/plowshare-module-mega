@@ -1,9 +1,18 @@
 # mega.co.nz plugin for Plowshare4
 
-- Support shares
-- Upload chuck by chunk successffuly not simultianously
+Features:
+- Anonymous download
+- Anonymous & account upload
+  * Support shares
+  * Upload chuck by chunk successffuly not simultianously
 
 ## Usage
+
+Anonymous download:
+```shell
+# Don't forget to simple quote links
+$ plowdown 'https://mega.co.nz/#!EqkzGDoT!E9mAzHvHTsKmORXrzBlstUdGDWxQCMghpng-GoRhRRK'
+```
 
 Account upload (public file):
 ```shell
@@ -18,4 +27,8 @@ Note: Anonymous upload (i.e. ephemeral session) has been disabled by mega in ear
 Account upload (private file):
 ```shell
 $ plowup mega -a me@you.com --private <file>
+
+# Optional options:
+# --nossl    Use HTTP upload url instead of HTTPS
+# --eu       Use eu.api.mega.co.nz servers instead of g.api.mega.co.nz
 ```
