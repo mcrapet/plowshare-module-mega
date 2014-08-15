@@ -62,7 +62,7 @@ base64_to_hex() {
            IN="${IN}="
            ;;
     esac
-    base64 -d < <(echo -n "${IN//-/+}") | hexdump -v -e '/1 "%02X"'
+    base64 -d < <(echo -n "${IN//-/+}") | hexdump -v -e '1/1 "%02X"'
 }
 
 # Ascii to hexstring + padding (add 1, 2 or 3 null bytes)
