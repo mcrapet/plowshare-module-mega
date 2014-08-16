@@ -47,7 +47,7 @@ check_plowdir:
 patch_config: $(PLOWDIR)/modules/config
 	@grep -q '^mega[[:space:]]' $< || { \
 		echo 'patching modules/config file' && \
-		echo 'mega            | download | upload |        |      | probe |' >> $<; }
+		echo 'mega            | download | upload |        | list | probe |' >> $<; }
 
 unpatch_config: $(PLOWDIR)/modules/config
 	@grep -q '^mega[[:space:]]' $< && \

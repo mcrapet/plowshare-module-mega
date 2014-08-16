@@ -1,7 +1,5 @@
-#!/bin/bash
-#
-# mega.co.nz module
-# Copyright (c) 2013 Plowshare team
+# Plowshare mega.co.nz module
+# Copyright (c) 2013-2014 Plowshare team
 #
 # This file is part of Plowshare.
 #
@@ -22,7 +20,8 @@
 
 MODULE_MEGA_REGEXP_URL='https\?://\(www\.\)\?mega\.co\.nz/'
 
-MODULE_MEGA_DOWNLOAD_OPTIONS=""
+MODULE_MEGA_DOWNLOAD_OPTIONS="
+HACK,,hack,,Use 'n' instead of 'p' in api request"
 MODULE_MEGA_DOWNLOAD_RESUME=no
 MODULE_MEGA_DOWNLOAD_FINAL_LINK_NEEDS_COOKIE=no
 MODULE_MEGA_DOWNLOAD_SUCCESSIVE_INTERVAL=
@@ -35,7 +34,8 @@ PRIVATE_FILE,,private,,Do not allow others to download the file (account only)
 EUROPE,,eu,,Use eu.api.mega.co.nz servers instead of g.api.mega.co.nz"
 MODULE_MEGA_UPLOAD_REMOTE_SUPPORT=no
 
-MODULE_MEGA_PROBE_OPTIONS=""
+MODULE_MEGA_PROBE_OPTIONS="
+HACK,,hack,,Use 'n' instead of 'p' in api request"
 
 # Globals
 # Note: Be sure to not increment MEGA_SEQ_NO in a subshell but outside.
@@ -252,7 +252,7 @@ mega_dec_attr() {
 mega_error() {
     local E=$((-$1))
     local -ar ERRORS=(
-    'unknown ($1)'
+    "unknown ($1)"
     # General errors
     'EINTERNAL (-1): An internal error has occurred. Please submit a bug report, detailing the exact circumstances in which this error occurred'
     'EARGS (-2): You have passed invalid arguments to this command'
@@ -287,6 +287,7 @@ mega_error() {
 # HTTP (POST) request (client => server)
 # Note: Variables $MEGA_SESSION_ID and $MEGA_SEQ_NO are accessed directly.
 # $1: data to send
+# $2: (optional) node id
 mega_api_req() {
     local -r DATA=$1
     local JSON API_URL
@@ -307,6 +308,8 @@ mega_api_req() {
     else
         API_URL="$API_URL/cs?id=$MEGA_SEQ_NO&ak=$APP_KEY&sid=$MEGA_SESSION_ID"
     fi
+
+    [ -z "$2" ] || API_URL="$API_URL&n=$2"
 
     JSON=$(curl -X POST --retry 2 --data-binary "[$DATA]" \
         -H 'Content-Type: text/plain; charset=UTF-8' \
@@ -329,7 +332,7 @@ mega_get_rootid() {
     local JSON
 
     # command "f": Fetch node tree
-    JSON=$(mega_api_req '{"a":"f","c":"1"}') || return
+    JSON=$(mega_api_req '{"a":"f","c":1}') || return
 
     # t=2: root node ("Cloud Drive")
     # FIXME. Crude parsing.
@@ -348,11 +351,16 @@ mega_get_folderid() {
     local -a ENC_KEYS
 
     # command "f": Fetch node tree
-    JSON=$(mega_api_req '{"a":"f","c":"1"}' | \
+    # TODO: see extra paramters: "r":1
+    JSON=$(mega_api_req '{"a":"f","c":1}' | \
         sed -e 's/}[[:space:]]*[],]/}\n/g' | \
         sed -ne '/"t"[[:space:]]*:[[:space:]]*1/p') || return
 
-    # Grep all directories (one per line). t=1
+    # Grep all directories (one per line).
+    # t: filetype (1 for directory)
+    # p: parent handle
+    # sk: shared key
+    # su: shared user
     # {"h":"FsU3gQCA","p":"YsVBWSzJ","u":"lPymiGWTSiA","t":1,"a":"gd-f0USMKuaPUwcSoqtRXg","k":"lPymiGWTSiA:70ey9v0w0M1cI-Kt1wR98A","ts":1374527356}
     # {"h":"Ox5WTJ5Q","p":"bk4C1ToD","u":"kz5HBLnEkOM","t":1,"a":"gzz_qwO8ZK9noa6JjpBQIj3PAA4V_VQGEoGtMdraqe4","k":"Ox5WTJ5Q:dJ6oqJEdy6l2fuaoCyq7zQ","r":0,"su":"kz5HBLnEkOM","sk":"kT6_Z94WD7hnc---ISZNHw","ts":1375614490}
     for LINE in $JSON; do
@@ -577,7 +585,11 @@ mega_download() {
 
     AESKEY=$(hex_xor "${KEY:0:32}" "${KEY:32:32}")
 
-    JSON=$(mega_api_req '{"a":"g","g":1,"p":"'"$FILE_ID"'"}') || return
+    if [ -z "$HACK" ]; then
+        JSON=$(mega_api_req '{"a":"g","g":1,"p":"'"$FILE_ID"'"}') || return
+    else
+        JSON=$(mega_api_req '{"a":"g","g":1,"n":"'"$FILE_ID"'"}') || return
+    fi
     (( ++MEGA_SEQ_NO ))
 
     FILE_URL=$(echo "$JSON" | parse_json g) || return
@@ -817,6 +829,65 @@ $(hex_to_base64 "$FILE_ATTR")\",\"k\":\"$(hex_to_base64 "$ENC_KEY")\"}"
     echo 'https://mega.co.nz/#!'"$FILE_ID"'!'"$(hex_to_base64 $NODE_KEY)"
 }
 
+# List a mega shareed folder
+# $1: folder link URL
+# $2: recurse subfolders (null string means not selected)
+# stdout: list of links and file names (alternating)
+mega_list() {
+    local -r URL=$1
+    local FOLDER_ID FOLDER_KEY JSON KEY AESKEY FILE_ID
+    local ENC_KEY NODE_KEY_FULL NODE_KEY ENC_ATTR FILE_ATTR FILE_NAME
+
+    if ! match '/#F!' "$URL"; then
+        log_error 'This is not a directory list'
+        return $ERR_FATAL
+    fi
+
+    IFS="!" read -r _ FOLDER_ID FOLDER_KEY <<< "$URL"
+
+    if [ -z "$FOLDER_ID" ]; then
+        log_error 'folder id is missing, bad link'
+        return $ERR_FATAL
+    fi
+
+    if [ -z "$FOLDER_KEY" ]; then
+        log_error 'folder key is missing, bad link'
+        return $ERR_FATAL
+    fi
+
+    # command "f": Fetch node tree
+    #JSON=$(mega_api_req '{"a":"f","c":1,"r":1}' "$FOLDER_ID" |
+    JSON=$(mega_api_req '{"a":"f","c":1}' "$FOLDER_ID" | \
+        sed -e 's/},{/},\n{/g' | \
+        sed -ne '/"t"[[:space:]]*:[[:space:]]*0/p') || return
+    (( ++MEGA_SEQ_NO ))
+
+    KEY=$(base64_to_hex "$FOLDER_KEY")
+    AESKEY=$(hex_xor "${KEY:0:32}" "${KEY:32:32}")
+
+    # Grep all files (one per line).
+    # t: filetype (0 for regular file)
+    # {"h":"zR8niALR","p":"GJclVaKI","u":"65fYYu5ZLBU","t":0,"a":"p91p4G1aF4DSOUajkxGgTuJDBnGqXIa4XBNSkJu1zwkWjhS8iCZmdoCRWDX3ebmBDemU_VFYvoAGTq8mb6LtuQ","k":"GJclVaKI:vhe23fV90E6We7hrSzoXtZYafjBwjqYSQcAZOlrQGLo","s":2529042,"ts":1395678307}],"sn":"IDuVU07Ia4A"}
+    while read -r ; do
+        FILE_ID=$(parse_json h <<< "$REPLY") || return
+
+        ENC_KEY=$(parse_json k <<< "$REPLY")
+        ENC_KEY=$(base64_to_hex "${ENC_KEY#*:}")
+        NODE_KEY_FULL=$(mega_decrypt_key "$AESKEY" "$ENC_KEY")
+        NODE_KEY=$(hex_xor "${NODE_KEY_FULL:0:32}" "${NODE_KEY_FULL:32:32}")
+
+        # {"n":"andalouvibe.opus","c":"NELir5yRjHQZW-FQx0RSEQSaP_1S"}
+        ENC_ATTR=$(parse_json a <<< "$REPLY")
+        ENC_ATTR=$(base64_to_hex "$ENC_ATTR")
+        FILE_ATTR=$(mega_dec_attr "$ENC_ATTR" "$NODE_KEY") || return
+        FILE_NAME=$(echo "$FILE_ATTR" | parse_json n <<< "$FILE_ATTR") || return
+
+        echo 'https://mega.co.nz/#!'"$FILE_ID"'!'"$(hex_to_base64 $NODE_KEY_FULL)"
+        echo "$FILE_NAME"
+    done <<< "$JSON"
+    log_error 'Warning: Concerning these links, you must use --hack command line switch when using with plowdown or plowprobe.'
+}
+
 # Probe a download URL
 # $1: cookie file (unused here)
 # $2: mega url
@@ -840,7 +911,11 @@ mega_probe() {
     fi
 
     # Note: Suitable status is returned for dead links
-    JSON=$(mega_api_req '{"a":"g","g":1,"p":"'"$FILE_ID"'"}') || return
+    if [ -z "$HACK" ]; then
+        JSON=$(mega_api_req '{"a":"g","g":1,"p":"'"$FILE_ID"'"}') || return
+    else
+        JSON=$(mega_api_req '{"a":"g","g":1,"n":"'"$FILE_ID"'"}') || return
+    fi
     (( ++MEGA_SEQ_NO ))
 
     REQ_OUT=c

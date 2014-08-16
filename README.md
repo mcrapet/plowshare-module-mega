@@ -1,10 +1,17 @@
 # mega.co.nz plugin for Plowshare4
 
+This module is more a "proof of concept" of making cryptography with bash
+rather than a reliable plugin.
+
 Features:
 - Anonymous download
 - Anonymous & account upload
   * Support shares
   * Upload chuck by chunk successffuly not simultianously
+- Folder link listing
+
+Restrictions:
+- Account password must not exceed 16 characters
 
 ## Usage
 
@@ -32,3 +39,6 @@ $ plowup mega -a me@you.com --private <file>
 # --nossl    Use HTTP upload url instead of HTTPS
 # --eu       Use eu.api.mega.co.nz servers instead of g.api.mega.co.nz
 ```
+
+Upload process is slow and inefficient because file is cutted into chunks which are uploaded successffuly.
+It's not advised to use with big files.
