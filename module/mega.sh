@@ -21,6 +21,7 @@
 MODULE_MEGA_REGEXP_URL='https\?://\(www\.\)\?mega\.co\.nz/'
 
 MODULE_MEGA_DOWNLOAD_OPTIONS="
+IGNORE_CRC,,ignore-crc,,Ignore meta-MAC mismatch (in order to get file anyway)
 HACK,,hack,,Use 'n' instead of 'p' in api request"
 MODULE_MEGA_DOWNLOAD_RESUME=no
 MODULE_MEGA_DOWNLOAD_FINAL_LINK_NEEDS_COOKIE=no
@@ -650,7 +651,14 @@ mega_download() {
         return 0
     fi
 
-    log_debug "meta-MAC mismatch! $META_MAC expected"
+    log_error "meta-MAC mismatch! $META_MAC expected"
+
+    if [ -n "$IGNORE_CRC" ]; then
+        echo "file://${TMP_FILE}.dec"
+        echo "$FILE_NAME"
+        return 0
+    fi
+
     return $ERR_FATAL
 }
 
