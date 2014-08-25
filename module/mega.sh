@@ -869,9 +869,9 @@ mega_list() {
     # t: filetype (0 for regular file)
     # {"h":"zR8niALR","p":"GJclVaKI","u":"65fYYu5ZLBU","t":0,"a":"p91p4G1aF4DSOUajkxGgTuJDBnGqXIa4XBNSkJu1zwkWjhS8iCZmdoCRWDX3ebmBDemU_VFYvoAGTq8mb6LtuQ","k":"GJclVaKI:vhe23fV90E6We7hrSzoXtZYafjBwjqYSQcAZOlrQGLo","s":2529042,"ts":1395678307}],"sn":"IDuVU07Ia4A"}
     while read -r ; do
-        FILE_ID=$(parse_json h <<< "$REPLY") || return
+        FILE_ID=$(parse_json h <<< "$REPLY") || continue
 
-        ENC_KEY=$(parse_json k <<< "$REPLY")
+        ENC_KEY=$(parse_json k <<< "$REPLY") || continue
         ENC_KEY=$(base64_to_hex "${ENC_KEY#*:}")
         NODE_KEY_FULL=$(mega_decrypt_key "$AESKEY" "$ENC_KEY")
         NODE_KEY=$(hex_xor "${NODE_KEY_FULL:0:32}" "${NODE_KEY_FULL:32:32}")
