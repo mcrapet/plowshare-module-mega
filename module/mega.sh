@@ -577,6 +577,11 @@ mega_download() {
         return $ERR_FATAL
     fi
 
+    if match '/#F!' "$URL"; then
+        log_error 'This is a folder link, use plowlist'
+        return $ERR_FATAL
+    fi
+
     KEY=$(base64_to_hex "$FILE_KEY")
     AES_IV4=${KEY:32:8}
     AES_IV5=${KEY:40:8}
