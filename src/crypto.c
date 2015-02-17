@@ -1,6 +1,6 @@
 /* vim: filetype=c fenc=utf-8 shiftwidth=2 tabstop=2 expandtab
  *
- * mega.co.nz plugin for plowshare
+ * mega.co.nz module for plowshare
  * Copyright (c) 2013 Plowshare team
  *
  * This file is part of Plowshare.

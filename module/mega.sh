@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Plowshare.  If not, see <http://www.gnu.org/licenses/>.
 #
-# Note: This module requires: hexdump, dd, base64, plugin/mega executable
+# Note: This module requires: hexdump, dd, base64, exec/mega executable
 
 MODULE_MEGA_REGEXP_URL='https\?://\(www\.\)\?mega\.co\.nz/'
 
@@ -40,7 +40,7 @@ HACK,,hack,,Use 'n' instead of 'p' in api request"
 
 # Globals
 # Note: Be sure to not increment MEGA_SEQ_NO in a subshell but outside.
-declare -r MEGA_CRYPTO="$LIBDIR/plugins/mega"
+declare -r MEGA_CRYPTO="$LIBDIR/exec/mega"
 declare -i MEGA_SEQ_NO=$(random d 10)
 
 # $1: hex buffer

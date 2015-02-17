@@ -1,4 +1,4 @@
-# mega.co.nz plugin for Plowshare4
+# mega.co.nz module for Plowshare4
 
 This module is more a "proof of concept" of making cryptography with bash
 rather than a reliable plugin.

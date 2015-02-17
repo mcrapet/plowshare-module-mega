@@ -1,5 +1,5 @@
 ##
-# mega.co.nz plugin for Plowshare
+# mega.co.nz module for Plowshare
 # Usage:
 # - make PREFIX=/usr install
 # - make PREFIX=/usr DESTDIR=/tmp/packaging install
@@ -29,12 +29,12 @@ $(OUT): $(SRC)
 
 install: $(OUT)
 	$(INSTALL) -d $(PLOWDIR)/modules
-	$(INSTALL) -d $(PLOWDIR)/plugins
-	$(INSTALL) -m 755 $(OUT) $(PLOWDIR)/plugins/mega
+	$(INSTALL) -d $(PLOWDIR)/exec
+	$(INSTALL) -m 755 $(OUT) $(PLOWDIR)/exec/mega
 	$(INSTALL) -m 644 module/mega.sh $(PLOWDIR)/modules
 
 uninstall:
-	$(RM) $(PLOWDIR)/plugins/mega
+	$(RM) $(PLOWDIR)/exec/mega
 	$(RM) $(PLOWDIR)/modules/mega.sh
 
 clean:
