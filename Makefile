@@ -10,8 +10,8 @@
 # - check for openssl libs (libcrypto.so)
 
 # Paths you can override
-PREFIX  ?= /usr/local
-PLOWDIR ?= $(DESTDIR)$(PREFIX)/share/plowshare4
+PREFIX  ?= /usr
+PLOWDIR ?= $(DESTDIR)$(PREFIX)/share/plowshare
 
 # Compiler and tools
 CC = gcc
