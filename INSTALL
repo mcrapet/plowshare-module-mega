@@ -3,15 +3,15 @@ mega.co.nz module for Plowshare : installation notes
 $ make install
 
 # In common case, plowshare4 is already installed and you want to add
-# mega in plowshare4's internal configuration file. You should invoke:
+# mega in plowshare's internal configuration file (config). You should invoke:
 
 $ make patch_config
 
 Note: for non-root users, adding sudo might be necessary.
 
-You can define a custom installation prefix (default prefix is /usr/local):
+You can define a custom installation prefix (default prefix is /usr):
 
-$ make install PREFIX=/usr
+$ make install PREFIX=/usr/local
 
 If you are directly working on a cloned plowshare git repository you can do:
 

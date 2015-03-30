@@ -1,8 +1,8 @@
 ##
 # mega.co.nz module for Plowshare
 # Usage:
-# - make PREFIX=/usr install
-# - make PREFIX=/usr DESTDIR=/tmp/packaging install
+# - make PREFIX=/usr/local install
+# - make PREFIX=/usr/local DESTDIR=/tmp/packaging install
 ##
 
 # TODO:
