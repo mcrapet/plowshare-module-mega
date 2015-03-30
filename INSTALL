@@ -1,5 +1,8 @@
 mega.co.nz module for Plowshare : installation notes
 
+It requires libcrypto.so to work and some headers for compilation.
+On Debian this does the trick: apt-get install libssl-dev
+
 $ make install
 
 # In common case, plowshare4 is already installed and you want to add
