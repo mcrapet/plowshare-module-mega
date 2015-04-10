@@ -1,24 +1,36 @@
 mega.co.nz module for Plowshare : installation notes
 
+Method 1: legay "modules/" method
+=================================
+
 It requires libcrypto.so to work and some headers for compilation.
 On Debian this does the trick: apt-get install libssl-dev
 
+$ ./autogen.sh
+$ ./configure
 $ make install
 
-# In common case, plowshare4 is already installed and you want to add
-# mega in plowshare's internal configuration file (config). You should invoke:
+--with-plowdir=/path/to/plowshare/src can appended to configure to specify a non default
+installation path. Default is $prefix/share/plowshare.
 
-$ make patch_config
+Note: for non-root users, adding sudo might be necessary before make install.
 
-Note: for non-root users, adding sudo might be necessary.
+Plowshare's internal configuration file (/path/to/plowshare/modules/config) will be patched to add mega module.
 
-You can define a custom installation prefix (default prefix is /usr):
+Method 2: plowmod
+=================
 
-$ make install PREFIX=/usr/local
+Since plowshare 2.1.0, a tool named plowmod allow to easily manage modules repositories
+and updates into ~/.config/plowshare/modules.d/
 
-If you are directly working on a cloned plowshare git repository you can do:
+$ plowmod -i https://github.com/mcrapet/plowshare-module-mega.git
+$ cd ~/.config/plowshare/mega.git
+$ ./autogen.sh
+$ ./configure --enable-local
+$ make
 
-$ PLOWDIR=/path/to/plowshare/src make install patch_config
+Later updates could be done using:
 
+$ plowmod -u
 
 # vim: set fileencoding utf-8

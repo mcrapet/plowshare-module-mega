@@ -1,0 +1,17 @@
+/aclocal.m4
+/compile
+/config.guess
+/config.log
+/config.status
+/config.sub
+/configure
+/depcomp
+/install-sh
+/libtool
+/ltmain.sh
+/missing
+/stamp-h1
+/autom4te.cache/
+Makefile
+Makefile.in
+*.o

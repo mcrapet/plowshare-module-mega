@@ -40,8 +40,8 @@ HACK,,hack,,Use 'n' instead of 'p' in api request"
 
 # Globals
 # Note: Be sure to not increment MEGA_SEQ_NO in a subshell but outside.
-declare -r MEGA_CRYPTO="$LIBDIR/exec/mega"
 declare -i MEGA_SEQ_NO=$(random d 10)
+declare -r MEGA_CRYPTO=$(PATH="$PLOWSHARE_CONFDIR/exec:$LIBDIR/exec:$PATH" type -P mega 2>/dev/null)
 
 # $1: hex buffer
 # stdout: base64 buffer (MEGA variant)
