@@ -893,7 +893,7 @@ mega_list() {
         ENC_ATTR=$(parse_json a <<< "$REPLY")
         ENC_ATTR=$(base64_to_hex "$ENC_ATTR")
         FILE_ATTR=$(mega_dec_attr "$ENC_ATTR" "$NODE_KEY") || return
-        FILE_NAME=$(echo "$FILE_ATTR" | parse_json n <<< "$FILE_ATTR") || return
+        FILE_NAME=$(parse_json n <<< "$FILE_ATTR") || return
 
         echo 'https://mega.co.nz/#!'"$FILE_ID"'!'"$(hex_to_base64 $NODE_KEY_FULL)"
         echo "$FILE_NAME"
