@@ -14,12 +14,24 @@ Restrictions:
 
 ## Usage
 
+### Download
+
 Anonymous download:
 ```shell
 $ plowdown 'https://mega.co.nz/#!EqkzGDoT!E9mAzHvHTsKmORXrzBlstUdGDWxQCMghpng-GoRhRRK'
 ```
 
 **Note**: Don't forget to simple quote links because `!` is reserved by Bash for history substitution.
+
+#### Ignore CRCs
+
+Concerning file encryption (AES-128-CTR), mega does not check cipther itself but only verify correct *meta-MAC*
+(64-bit hash) and well formed data (using AES 128-bit key + 2*32-bit IV). Technically, any symmetric cipher could
+be used, even plaintext!
+
+Use `--ignore-crc` switch to ignore *meta-MAC* mismatch: allow to get the file even if *meta-MAC* verification fails.
+
+### Upload
 
 Account upload (public file):
 ```shell
@@ -46,3 +58,10 @@ Optional options:
 
 Upload process is slow and inefficient because file is cutted into chunks which are uploaded successively.
 It's not advised to use with big files.
+
+### List
+
+Anonymous public folder:
+```shell
+$ plowlist 'https://mega.co.nz/#F!94wGHLbd!nx8UQbcMZTuFGMhJvFk_ZQ'
+```
