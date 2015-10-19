@@ -1,5 +1,5 @@
 # Plowshare mega.co.nz module
-# Copyright (c) 2013-2014 Plowshare team
+# Copyright (c) 2013-2015 Plowshare team
 #
 # This file is part of Plowshare.
 #
@@ -18,7 +18,7 @@
 #
 # Note: This module requires: hexdump, dd, base64, exec/mega executable
 
-MODULE_MEGA_REGEXP_URL='https\?://\(www\.\)\?mega\.co\.nz/'
+MODULE_MEGA_REGEXP_URL='https\?://\(www\.\)\?mega\(\.co\)\?\.nz/'
 
 MODULE_MEGA_DOWNLOAD_OPTIONS="
 IGNORE_CRC,,ignore-crc,,Ignore meta-MAC mismatch (in order to get file anyway)
