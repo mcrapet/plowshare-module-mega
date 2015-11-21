@@ -25,7 +25,7 @@ $ plowdown 'https://mega.co.nz/#!EqkzGDoT!E9mAzHvHTsKmORXrzBlstUdGDWxQCMghpng-Go
 
 #### Ignore CRCs
 
-Concerning file encryption (AES-128-CTR), mega does not check cipther itself but only verify correct *meta-MAC*
+Concerning file encryption (AES-128-CTR), mega does not check cipher itself but only verify correct *meta-MAC*
 (64-bit hash) and well formed data (using AES 128-bit key + 2*32-bit IV). Technically, any symmetric cipher could
 be used, even plaintext!
 
@@ -56,7 +56,7 @@ Optional options:
 - `--nossl` : use HTTP upload url instead of HTTPS
 - `--eu` : use `eu.api.mega.co.nz` servers instead of `g.api.mega.co.nz`
 
-Upload process is slow and inefficient because file is cutted into chunks which are uploaded successively.
+Upload process is slow and inefficient because file is cut into chunks which are uploaded successively.
 It's not advised to use with big files.
 
 ### List
