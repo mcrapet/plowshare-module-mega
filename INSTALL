@@ -1,16 +1,19 @@
 mega.co.nz module for Plowshare : installation notes
 
+It requires libcrypto.so to work and some headers for compilation.
+On Debian, Ubuntu and derivatives: apt-get install libssl-dev gcc autoconf automake git
+On Fedora: dnf install openssl-devel gcc autoconf automake git
+On OpenSuse: zypper install libopenssl-devel gcc autoconf automake git
+
 Method 1: legay "modules/" method
 =================================
 
-It requires libcrypto.so to work and some headers for compilation.
-On Debian this does the trick: apt-get install libssl-dev
-
+$ git clone https://github.com/mcrapet/plowshare-module-mega --depth 1 && cd plowshare-module-mega
 $ ./autogen.sh
 $ ./configure
 $ make install
 
---with-plowdir=/path/to/plowshare/src can appended to configure to specify a non default
+--with-plowdir=/path/to/plowshare/src can be appended to ./configure to specify a non default
 installation path. Default is $prefix/share/plowshare.
 
 Note: for non-root users, adding sudo might be necessary before make install.
@@ -24,7 +27,7 @@ Since plowshare 2.1.0, a tool named plowmod allow to easily manage modules repos
 and updates into ~/.config/plowshare/modules.d/
 
 $ plowmod -i https://github.com/mcrapet/plowshare-module-mega.git
-$ cd ~/.config/plowshare/mega.git
+$ cd ~/.config/plowshare/modules.d/mega.git
 $ ./autogen.sh
 $ ./configure --enable-local
 $ make
@@ -34,3 +37,4 @@ Later updates could be done using:
 $ plowmod -u
 
 # vim: set fileencoding utf-8
+
