@@ -1,7 +1,7 @@
 mega.co.nz module for Plowshare : installation notes
 
 It requires libcrypto.so to work and some headers for compilation.
-On Debian, Ubuntu and derivatives: apt-get install libssl-dev gcc autoconf automake git
+On Debian, Ubuntu and derivatives: apt-get install libssl-dev gcc autoconf automake pkg-config git
 On Fedora: dnf install openssl-devel gcc autoconf automake git
 On OpenSuse: zypper install libopenssl-devel gcc autoconf automake git
 
