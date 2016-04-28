@@ -18,7 +18,7 @@ AC_ARG_ENABLE(
     [local],
     [AS_HELP_STRING(
         [--enable-local],
-        [don't install, and use current directory. Use this is you plan to use plowmod])],
+        [don't install, and use current directory. Use this if you plan to use plowmod])],
     [enable_local=yes],
     [enable_local=""])
 dnl AC_SUBST([LOCAL_MODE], [$enable_local])
