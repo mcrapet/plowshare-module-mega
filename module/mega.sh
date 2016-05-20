@@ -598,7 +598,13 @@ mega_download() {
     fi
     (( ++MEGA_SEQ_NO ))
 
-    FILE_URL=$(echo "$JSON" | parse_json g) || return
+    if ! FILE_URL=$(echo "$JSON" | parse_json g); then
+        C=$(parse_json e <<< "$JSON")
+        [ "$C" != '-18' ] || return $ERR_LINK_TEMP_UNAVAILABLE
+        mega_error "$JSON"
+        [ "$C" != '-3' ] || return $ERR_NETWORK
+        return $ERR_FATAL
+    fi
     FILE_SIZE=$(echo "$JSON" | parse_json s) || return
     ENC_ATTR=$(echo "$JSON" | parse_json at) || return
     ENC_ATTR=$(base64_to_hex "$ENC_ATTR")
