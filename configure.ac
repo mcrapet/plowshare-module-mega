@@ -1,4 +1,4 @@
-AC_INIT(plowshare-module-mega, 1.0.1)
+AC_INIT(plowshare-module-mega, 1.0.2)
 
 AC_CONFIG_MACRO_DIR([m4])
 

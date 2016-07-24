@@ -53,8 +53,9 @@ $ plowup mega -a 'email:password' --private <file>
 ```
 
 Optional options:
-- `--nossl` : use HTTP upload url instead of HTTPS
-- `--eu` : use `eu.api.mega.co.nz` servers instead of `g.api.mega.co.nz`
+- `--nossl`: use HTTP upload url instead of HTTPS
+- `--eu`: use `eu.api.mega.co.nz` servers instead of `g.api.mega.co.nz`
+- `--multi=N`: uses curl's `--next` switch to process several chunks at once (requires curl 7.36+)
 
 Upload process is slow and inefficient because file is cut into chunks which are uploaded successively.
 It's not advised to use with big files.

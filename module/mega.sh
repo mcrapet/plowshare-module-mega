@@ -1,5 +1,5 @@
 # Plowshare mega.co.nz module
-# Copyright (c) 2013-2015 Plowshare team
+# Copyright (c) 2013-2016 Plowshare team
 #
 # This file is part of Plowshare.
 #
@@ -32,7 +32,8 @@ AUTH,a,auth,a=EMAIL:PASSWORD,User account
 FOLDER,,folder,s=FOLDER,Folder to upload files into (account only)
 NOSSL,,nossl,,Use HTTP upload url instead of HTTPS
 PRIVATE_FILE,,private,,Do not allow others to download the file (account only)
-EUROPE,,eu,,Use eu.api.mega.co.nz servers instead of g.api.mega.co.nz"
+EUROPE,,eu,,Use eu.api.mega.co.nz servers instead of g.api.mega.co.nz
+MULTI,,multi,n=NUM,Use curl (7.36+) --next switch to upload multiple chunks at once"
 MODULE_MEGA_UPLOAD_REMOTE_SUPPORT=no
 
 MODULE_MEGA_PROBE_OPTIONS="
@@ -738,13 +739,17 @@ mega_upload() {
     local -a CHUNKS=($(get_chunks $SZ))
     local N I
 
+    # Only used by curl's multi upload ($MULTI)
+    local TMP_FILE2
+    local -a CHUNKS_URLS CHUNKS_FILES
+
     N=${#CHUNKS[@]}
     I=1
 
     for C in ${CHUNKS[@]}; do
         IFS=':' read -r OFFSET LENGTH <<<"$C"
 
-        log_error "chunk $I/$N: offset: $OFFSET, length: $LENGTH"
+        [ -n "$MULTI" ] || log_error "chunk $I/$N: offset: $OFFSET, length: $LENGTH"
         if (( LENGTH % 131072 == 0 )); then
             dd if="$2" bs=131072 skip=$((OFFSET/131072)) \
                 count=$((LENGTH/131072)) of="$TMP_FILE" 2>/dev/null
@@ -759,27 +764,56 @@ mega_upload() {
         # AES-CTR mode does not require plaintext padding
         COUNTER=$(aes_ctr_encrypt "$TMP_FILE" "${TMP_FILE}.enc" "$COUNTER" "$AESKEY")
 
-        # 2 tries
-        TOKEN=$(curl -X POST --data-binary "@${TMP_FILE}.enc" \
-                -H 'Origin: Plowshare' "$UP_URL/$OFFSET") || {
-            wait 5 || return
-            log_error "chunk $I/$N: retry";
-            TOKEN=$(curl -X POST --data-binary "@${TMP_FILE}.enc" \
+        if [ -z "$MULTI" ]; then
+            TOKEN=$(curl --retry 2 --data-binary "@${TMP_FILE}.enc" \
                     -H 'Origin: Plowshare' "$UP_URL/$OFFSET") || return
-        }
-
-        # Empty result is not an error.
-        if [ -n "$TOKEN" ]; then
-            log_debug "upload token: '$TOKEN'"
-            if [ "${#TOKEN}" -le 3 ]; then
-                log_error "Upload chunck error! offset=$OFFSET"
-                mega_error "$TOKEN"
-                return $ERR_FATAL
+            # Empty result is not an error.
+            if [ -n "$TOKEN" ]; then
+                log_debug "upload token: '$TOKEN'"
+                if [ "${#TOKEN}" -le 3 ]; then
+                    log_error "Upload chunck error! offset=$OFFSET"
+                    mega_error "$TOKEN"
+                    return $ERR_FATAL
+                fi
             fi
+        else
+            TMP_FILE2=$(create_tempfile ".$I.mega") || return
+            cp "$TMP_FILE" "$TMP_FILE2"
+            CHUNKS_URLS+=("$UP_URL/$OFFSET")
+            CHUNKS_FILES+=("$TMP_FILE2")
         fi
 
         (( ++I ))
     done
+
+    if [ -n "$MULTI" ]; then
+        local -ir J=$MULTI
+        local -a CURL_ARGS
+        for (( I=0; I < (N-J); I=I+J )); do
+            log_error "chunks $((I+1))..$((I+J))/$N"
+            C=$J
+            unset -v CURL_ARGS
+            while (( C-- )); do
+                CURL_ARGS+=(--retry 2 --data-binary "@${CHUNKS_FILES[$((I+C))]}" \
+                    -H 'Origin: Plowshare' "${CHUNKS_URLS[$((I+C))]}" --next)
+            done
+            # delete last element
+            unset -v CURL_ARGS[-1]
+            curl "${CURL_ARGS[@]}" || return
+        done
+
+        # [1..$J] chunks left. We need last TOKEN
+        (( C = N % $J ))
+        (( C != 0 )) || C=$J
+        log_error "chunks $((N-C+1))..$N/$N (last $C)"
+        while (( C-- )); do
+            TOKEN=$(curl --retry 2 --data-binary "@${CHUNKS_FILES[$((N-C-1))]}" \
+                -H 'Origin: Plowshare' "${CHUNKS_URLS[$((N-C-1))]}") || return
+        done
+
+        # delete temp files (ciphered chunks)
+        rm "${CHUNKS_FILES[@]}"
+    fi
 
     # CBC-MAC to get File MAC
     C=$(sed -e 's/../\\x&/g' <<<"$FILE_MAC")
