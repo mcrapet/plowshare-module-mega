@@ -1,5 +1,5 @@
 # Plowshare mega.co.nz module
-# Copyright (c) 2013-2016 Plowshare team
+# Copyright (c) 2013-2017 Plowshare team
 #
 # This file is part of Plowshare.
 #
@@ -239,7 +239,7 @@ mega_dec_attr() {
     local KEY=$2
     local B C
 
-    B=$(aes_cbc_decrypt "$KEY" "$ENC_ATTR" | sed -e 's/../\\x&/g')
+    B=$(aes_cbc_decrypt "$KEY" "$ENC_ATTR" | sed -e 's/\(00\)\+$//' -e 's/../\\x&/g')
     C=$(echo -ne "$B")
 
     if [ "${C:0:5}" != 'MEGA{' ]; then
